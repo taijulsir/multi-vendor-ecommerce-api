@@ -1,7 +1,12 @@
-import { ConflictException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  UnauthorizedException,
+} from '@nestjs/common';
 
 import { Prisma } from '../generated/prisma/client';
 import { AuthService } from './auth.service';
+import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 
 describe('AuthService', () => {
@@ -11,6 +16,7 @@ describe('AuthService', () => {
     user: {
       findUnique: jest.fn(),
       create: jest.fn(),
+      update: jest.fn(),
     },
   };
 
@@ -123,6 +129,111 @@ describe('AuthService', () => {
       );
 
       await expect(service.register(dto)).rejects.toThrow(
+        'connection terminated unexpectedly',
+      );
+    });
+  });
+
+  describe('login', () => {
+    const loginDto: LoginDto = {
+      email: 'jane.doe@example.com',
+      password: 'StrongPassw0rd!',
+    };
+
+    const activeUser = { ...persistedUser, status: 'ACTIVE' };
+
+    it('verifies the password, updates lastLoginAt, and returns the user without passwordHash', async () => {
+      const updatedUser = {
+        ...activeUser,
+        lastLoginAt: new Date('2026-01-02T00:00:00.000Z'),
+      };
+
+      prisma.user.findUnique.mockResolvedValue(activeUser);
+      passwordService.verify.mockResolvedValue(true);
+      prisma.user.update.mockResolvedValue(updatedUser);
+
+      const result = await service.login(loginDto);
+
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { email: loginDto.email },
+      });
+      expect(passwordService.verify).toHaveBeenCalledWith(
+        activeUser.passwordHash,
+        loginDto.password,
+      );
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: activeUser.id },
+        data: { lastLoginAt: expect.any(Date) },
+      });
+
+      expect(result.lastLoginAt).toEqual(updatedUser.lastLoginAt);
+      expect(result).not.toHaveProperty('passwordHash');
+      expect(JSON.stringify(result)).not.toContain(activeUser.passwordHash);
+    });
+
+    it('rejects with a generic error and does not update lastLoginAt for an unknown email', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(service.login(loginDto)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+      await expect(service.login(loginDto)).rejects.toThrow(
+        'Invalid email or password',
+      );
+
+      expect(passwordService.verify).not.toHaveBeenCalled();
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects with the same generic error and does not update lastLoginAt for a wrong password', async () => {
+      prisma.user.findUnique.mockResolvedValue(activeUser);
+      passwordService.verify.mockResolvedValue(false);
+
+      await expect(service.login(loginDto)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+      await expect(service.login(loginDto)).rejects.toThrow(
+        'Invalid email or password',
+      );
+
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('propagates password verification errors and does not update lastLoginAt', async () => {
+      prisma.user.findUnique.mockResolvedValue(activeUser);
+      passwordService.verify.mockRejectedValue(
+        new Error('argon2 verify failed'),
+      );
+
+      await expect(service.login(loginDto)).rejects.toThrow(
+        'argon2 verify failed',
+      );
+
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it.each(['SUSPENDED', 'BLOCKED'] as const)(
+      'rejects a %s account with ForbiddenException and does not update lastLoginAt',
+      async (status) => {
+        prisma.user.findUnique.mockResolvedValue({ ...activeUser, status });
+        passwordService.verify.mockResolvedValue(true);
+
+        await expect(service.login(loginDto)).rejects.toBeInstanceOf(
+          ForbiddenException,
+        );
+
+        expect(prisma.user.update).not.toHaveBeenCalled();
+      },
+    );
+
+    it('propagates lastLoginAt persistence failures instead of swallowing them', async () => {
+      prisma.user.findUnique.mockResolvedValue(activeUser);
+      passwordService.verify.mockResolvedValue(true);
+      prisma.user.update.mockRejectedValue(
+        new Error('connection terminated unexpectedly'),
+      );
+
+      await expect(service.login(loginDto)).rejects.toThrow(
         'connection terminated unexpectedly',
       );
     });

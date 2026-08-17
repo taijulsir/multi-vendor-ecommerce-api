@@ -98,4 +98,88 @@ describe('Auth API (e2e)', () => {
       })
       .expect(400);
   });
+
+  describe('POST /api/auth/login', () => {
+    const password = 'StrongPassw0rd!';
+
+    const registerTestUser = async () => {
+      const email = uniqueEmail();
+      registeredEmails.push(email);
+
+      await request(app.getHttpServer())
+        .post('/api/auth/register')
+        .send({ email, password, firstName: 'Jane' })
+        .expect(201);
+
+      return email;
+    };
+
+    it('logs in with correct credentials, updates lastLoginAt, and hides sensitive fields', async () => {
+      const email = await registerTestUser();
+
+      const response = await request(app.getHttpServer())
+        .post('/api/auth/login')
+        .send({ email, password })
+        .expect(200);
+
+      expect(response.body.email).toBe(email);
+      expect(response.body.status).toBe('ACTIVE');
+      expect(response.body.lastLoginAt).toEqual(expect.any(String));
+      expect(response.body).not.toHaveProperty('password');
+      expect(response.body).not.toHaveProperty('passwordHash');
+
+      const userInDb = await prisma.user.findUniqueOrThrow({
+        where: { email },
+      });
+      expect(userInDb.lastLoginAt).not.toBeNull();
+    });
+
+    it('rejects a wrong password with 401 Unauthorized', async () => {
+      const email = await registerTestUser();
+
+      const response = await request(app.getHttpServer())
+        .post('/api/auth/login')
+        .send({ email, password: 'WrongPassword1!' })
+        .expect(401);
+
+      expect(response.body).not.toHaveProperty('passwordHash');
+
+      const userInDb = await prisma.user.findUniqueOrThrow({
+        where: { email },
+      });
+      expect(userInDb.lastLoginAt).toBeNull();
+    });
+
+    it('rejects an unknown email with 401 Unauthorized', async () => {
+      await request(app.getHttpServer())
+        .post('/api/auth/login')
+        .send({ email: uniqueEmail(), password })
+        .expect(401);
+    });
+
+    it('rejects an invalid payload with 400 Bad Request', async () => {
+      await request(app.getHttpServer())
+        .post('/api/auth/login')
+        .send({ email: 'not-an-email' })
+        .expect(400);
+    });
+
+    it.each(['SUSPENDED', 'BLOCKED'] as const)(
+      'rejects a %s account with 403 Forbidden and does not update lastLoginAt',
+      async (status) => {
+        const email = await registerTestUser();
+        await prisma.user.update({ where: { email }, data: { status } });
+
+        await request(app.getHttpServer())
+          .post('/api/auth/login')
+          .send({ email, password })
+          .expect(403);
+
+        const userInDb = await prisma.user.findUniqueOrThrow({
+          where: { email },
+        });
+        expect(userInDb.lastLoginAt).toBeNull();
+      },
+    );
+  });
 });
