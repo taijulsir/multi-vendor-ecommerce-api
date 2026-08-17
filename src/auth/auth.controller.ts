@@ -21,6 +21,7 @@ import {
 import { AuthService } from './auth.service';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { LoginDto } from './dto/login.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDto } from './dto/register.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import type { SafeUser } from './utils/safe-user';
@@ -44,7 +45,9 @@ export class AuthController {
   @ApiOkResponse({
     description:
       'Login successful. Returns the authenticated user together with a ' +
-      'short-lived JWT access token (see JWT_ACCESS_EXPIRES_IN).',
+      'short-lived JWT access token (see JWT_ACCESS_EXPIRES_IN) and an ' +
+      'opaque refresh token (see JWT_REFRESH_EXPIRES_IN) for obtaining ' +
+      'new access tokens via POST /auth/refresh.',
     schema: {
       example: {
         id: 'b3f1c2a0-1234-4a5b-8c9d-0e1f2a3b4c5d',
@@ -60,6 +63,7 @@ export class AuthController {
         updatedAt: '2026-01-01T00:00:00.000Z',
         deletedAt: null,
         accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+        refreshToken: 'k3f9c2a01234a5b8c9d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f7081920a1b2c3d',
       },
     },
   })
@@ -69,6 +73,30 @@ export class AuthController {
   })
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
+  }
+
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Exchange a refresh token for a new access token',
+  })
+  @ApiOkResponse({
+    description:
+      'A new short-lived access token. The presented refresh token is ' +
+      'not rotated or invalidated in this phase.',
+    schema: {
+      example: {
+        accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+      },
+    },
+  })
+  @ApiUnauthorizedResponse({
+    description:
+      'The refresh token is missing, unrecognized, expired, or the ' +
+      'associated account is no longer permitted to authenticate.',
+  })
+  refresh(@Body() dto: RefreshTokenDto) {
+    return this.authService.refresh(dto);
   }
 
   @Get('me')

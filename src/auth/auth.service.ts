@@ -9,16 +9,24 @@ import { JwtService } from '@nestjs/jwt';
 import { Prisma, type UserStatus } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDto } from './dto/register.dto';
 import { PasswordService } from './password/password.service';
+import { RefreshTokenService } from './token/refresh-token.service';
 import { JwtPayload } from './types/jwt-payload';
 import { isAuthenticatable } from './utils/account-status';
 import { toSafeUser, type SafeUser } from './utils/safe-user';
 
 export type { SafeUser };
 
-/** Login response: the safe user representation plus the signed access token. */
-export type LoginResult = SafeUser & { accessToken: string };
+/** Login response: the safe user representation plus the signed tokens. */
+export type LoginResult = SafeUser & {
+  accessToken: string;
+  refreshToken: string;
+};
+
+/** Refresh response: a new access token only — no rotation in this phase. */
+export type RefreshResult = { accessToken: string };
 
 const PRISMA_UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
 
@@ -26,12 +34,19 @@ const PRISMA_UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
 // public response never reveals which condition failed.
 const INVALID_CREDENTIALS_MESSAGE = 'Invalid email or password';
 
+// Deliberately identical for every refresh failure mode (unknown token,
+// expired token, malformed-but-parseable token, suspended/blocked
+// account) — same "don't reveal which condition failed" principle as
+// login, applied to the refresh flow.
+const INVALID_REFRESH_TOKEN_MESSAGE = 'Invalid or expired refresh token';
+
 @Injectable()
 export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly passwordService: PasswordService,
     private readonly jwtService: JwtService,
+    private readonly refreshTokenService: RefreshTokenService,
   ) {}
 
   async register(dto: RegisterDto): Promise<SafeUser> {
@@ -130,7 +145,57 @@ export class AuthService {
     const payload: JwtPayload = { sub: updatedUser.id };
     const accessToken = await this.jwtService.signAsync(payload);
 
-    return { ...toSafeUser(updatedUser), accessToken };
+    // The raw refresh token exists only long enough to hash it and hand
+    // it back to the caller — only the hash is ever persisted or logged.
+    const refreshToken = this.refreshTokenService.generate();
+    await this.prisma.refreshToken.create({
+      data: {
+        userId: updatedUser.id,
+        tokenHash: this.refreshTokenService.hash(refreshToken),
+        expiresAt: this.refreshTokenService.getExpiresAt(),
+      },
+    });
+
+    return { ...toSafeUser(updatedUser), accessToken, refreshToken };
+  }
+
+  /**
+   * Exchanges a still-valid refresh token for a new access token.
+   *
+   * Deliberately does NOT issue a new refresh token or invalidate the
+   * presented one — rotation and reuse detection are out of scope for
+   * this phase (see the final report). The same refresh token therefore
+   * remains usable, unchanged, until it expires.
+   */
+  async refresh(dto: RefreshTokenDto): Promise<RefreshResult> {
+    const tokenHash = this.refreshTokenService.hash(dto.refreshToken);
+
+    const record = await this.prisma.refreshToken.findUnique({
+      where: { tokenHash },
+      include: { user: true },
+    });
+
+    // Unknown token, expired token, and (defensively) a token whose user
+    // relation somehow doesn't resolve are all indistinguishable to the
+    // caller — same generic error, same principle as login().
+    if (!record || record.expiresAt.getTime() <= Date.now() || !record.user) {
+      throw new UnauthorizedException(INVALID_REFRESH_TOKEN_MESSAGE);
+    }
+
+    // Reuses the exact same status policy as login/JwtStrategy — see
+    // isAuthenticatable(). Presented here as a uniform 401 rather than
+    // login's 403, matching JwtStrategy's precedent: this is "continuing
+    // an existing session," not a fresh authentication attempt, so an
+    // account that can no longer authenticate simply reads as "this
+    // token/session is no longer valid."
+    if (!isAuthenticatable(record.user.status)) {
+      throw new UnauthorizedException(INVALID_REFRESH_TOKEN_MESSAGE);
+    }
+
+    const payload: JwtPayload = { sub: record.user.id };
+    const accessToken = await this.jwtService.signAsync(payload);
+
+    return { accessToken };
   }
 
   /**
