@@ -1,0 +1,271 @@
+// ── Identity & Access ──────────────────────────────────────────────
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  BLOCKED
+}
+
+// ── Vendor & Shop ───────────────────────────────────────────────────
+enum VendorStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  FROZEN
+  REJECTED
+}
+
+enum VendorVerificationStatus {
+  PENDING
+  UNDER_REVIEW
+  VERIFIED
+  REJECTED
+}
+
+enum ShopStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+// ── Catalog ──────────────────────────────────────────────────────────
+enum CategoryStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum ProductType {
+  SIMPLE
+  VARIABLE
+}
+
+enum ProductVariantStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum InventoryTransactionType {
+  RESTOCK
+  SALE
+  RESERVATION
+  RELEASE
+  RETURN
+  ADJUSTMENT
+}
+
+// ── Cart ─────────────────────────────────────────────────────────────
+enum CartStatus {
+  ACTIVE
+  CONVERTED
+  ABANDONED
+  EXPIRED
+}
+
+// ── Order ────────────────────────────────────────────────────────────
+enum MasterOrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  PARTIALLY_FULFILLED
+  FULFILLED
+  CANCELLED
+  COMPLETED
+}
+
+// Summary payment state carried on MasterOrder (narrower than Payment.status)
+enum OrderPaymentStatus {
+  PENDING
+  AUTHORIZED
+  PAID
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum VendorOrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  READY_TO_SHIP
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  RETURN_REQUESTED
+  RETURNED
+}
+
+// ── Payment & Refund ─────────────────────────────────────────────────
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  AUTHORIZED
+  PAID
+  FAILED
+  CANCELLED
+  PARTIALLY_REFUNDED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CARD
+  MOBILE_PAYMENT
+  BANK_TRANSFER
+  CASH_ON_DELIVERY
+  OTHER
+}
+
+enum PaymentAttemptStatus {
+  INITIATED
+  PENDING
+  AUTHORIZED
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  EXPIRED
+}
+
+enum WebhookEventStatus {
+  RECEIVED
+  PROCESSING
+  PROCESSED
+  FAILED
+  IGNORED
+}
+
+enum RefundStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum RefundReason {
+  ORDER_CANCELLED
+  CUSTOMER_RETURN
+  DAMAGED_PRODUCT
+  WRONG_PRODUCT
+  PAYMENT_ERROR
+  DUPLICATE_PAYMENT
+  ADMIN_ADJUSTMENT
+  OTHER
+}
+
+// ── Wallet & Commission ─────────────────────────────────────────────
+enum WalletStatus {
+  ACTIVE
+  FROZEN
+  SUSPENDED
+  CLOSED
+}
+
+enum WalletTransactionDirection {
+  CREDIT
+  DEBIT
+}
+
+enum WalletTransactionType {
+  SALE_CREDIT
+  SETTLEMENT_CREDIT
+  COMMISSION_DEBIT
+  TRANSACTION_FEE_DEBIT
+  REFUND_DEBIT
+  WITHDRAWAL_DEBIT
+  ADJUSTMENT_CREDIT
+  ADJUSTMENT_DEBIT
+  REVERSAL_CREDIT
+  REVERSAL_DEBIT
+}
+
+enum CommissionType {
+  PERCENTAGE
+  FIXED
+}
+
+enum CommissionStatus {
+  PENDING
+  APPLIED
+  REVERSED
+  CANCELLED
+}
+
+// ── Promotion & Coupon ───────────────────────────────────────────────
+enum PromotionType {
+  PERCENTAGE
+  FIXED_AMOUNT
+}
+
+enum PromotionStatus {
+  DRAFT
+  SCHEDULED
+  ACTIVE
+  PAUSED
+  EXPIRED
+  CANCELLED
+}
+
+enum CouponStatus {
+  ACTIVE
+  DISABLED
+  EXPIRED
+}
+
+// ── Review & Rating ───────────────────────────────────────────────────
+enum ReviewStatus {
+  PENDING
+  PUBLISHED
+  REJECTED
+  HIDDEN
+}
+
+// ── Notification ────────────────────────────────────────────────────
+enum NotificationType {
+  ORDER_CREATED
+  ORDER_CONFIRMED
+  ORDER_SHIPPED
+  ORDER_DELIVERED
+  ORDER_CANCELLED
+
+  PAYMENT_SUCCESS
+  PAYMENT_FAILED
+  PAYMENT_REFUNDED
+
+  REFUND_REQUESTED
+  REFUND_APPROVED
+  REFUND_REJECTED
+  REFUND_COMPLETED
+
+  WALLET_CREDITED
+  WALLET_DEBITED
+  SETTLEMENT_COMPLETED
+  WITHDRAWAL_COMPLETED
+  WITHDRAWAL_FAILED
+
+  REVIEW_RECEIVED
+  REVIEW_PUBLISHED
+  REVIEW_REJECTED
+
+  PROMOTION_AVAILABLE
+
+  ACCOUNT_SECURITY
+  SYSTEM
+}
+
+enum NotificationStatus {
+  UNREAD
+  READ
+}
+
+// ── Audit & Activity ──────────────────────────────────────────────────
+enum AuditActorType {
+  USER
+  ADMIN
+  SYSTEM
+}

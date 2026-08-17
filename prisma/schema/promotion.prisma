@@ -1,0 +1,101 @@
+model Promotion {
+  id                 String          @id @default(uuid(7)) @db.Uuid
+  name               String
+  description        String?
+  type               PromotionType
+  value              Decimal         @db.Decimal(14, 2)
+  maxDiscountAmount  Decimal?        @map("max_discount_amount") @db.Decimal(14, 2)
+  minimumOrderAmount Decimal?        @map("minimum_order_amount") @db.Decimal(14, 2)
+  currency           String?         @db.Char(3)
+  status             PromotionStatus @default(DRAFT)
+  startsAt           DateTime        @map("starts_at")
+  endsAt             DateTime?       @map("ends_at")
+  usageLimit         Int?            @map("usage_limit")
+  perUserUsageLimit  Int?            @map("per_user_usage_limit")
+  createdBy          String?         @map("created_by") @db.Uuid
+  createdAt          DateTime        @default(now()) @map("created_at")
+  updatedAt          DateTime        @updatedAt @map("updated_at")
+
+  coupons    Coupon[]
+  vendors    PromotionVendor[]
+  products   PromotionProduct[]
+  categories PromotionCategory[]
+
+  @@index([status])
+  @@index([startsAt, endsAt])
+  @@index([createdAt])
+  @@map("promotions")
+}
+
+model Coupon {
+  id                String       @id @default(uuid(7)) @db.Uuid
+  promotionId       String       @map("promotion_id") @db.Uuid
+  code              String       @unique
+  status            CouponStatus @default(ACTIVE)
+  usageLimit        Int?         @map("usage_limit")
+  perUserUsageLimit Int?         @map("per_user_usage_limit")
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
+
+  promotion   Promotion          @relation(fields: [promotionId], references: [id], onDelete: Restrict)
+  redemptions CouponRedemption[]
+
+  @@index([promotionId])
+  @@index([status])
+  @@map("coupons")
+}
+
+model PromotionVendor {
+  promotionId String @map("promotion_id") @db.Uuid
+  vendorId    String @map("vendor_id") @db.Uuid
+
+  promotion Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+  vendor    Vendor    @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@id([promotionId, vendorId])
+  @@index([vendorId])
+  @@map("promotion_vendors")
+}
+
+model PromotionProduct {
+  promotionId String @map("promotion_id") @db.Uuid
+  productId   String @map("product_id") @db.Uuid
+
+  promotion Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@id([promotionId, productId])
+  @@index([productId])
+  @@map("promotion_products")
+}
+
+model PromotionCategory {
+  promotionId String @map("promotion_id") @db.Uuid
+  categoryId  String @map("category_id") @db.Uuid
+
+  promotion Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+  category  Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([promotionId, categoryId])
+  @@index([categoryId])
+  @@map("promotion_categories")
+}
+
+model CouponRedemption {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  couponId       String   @map("coupon_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  masterOrderId  String   @map("master_order_id") @db.Uuid
+  discountAmount Decimal  @map("discount_amount") @db.Decimal(14, 2)
+  currency       String   @db.Char(3)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  coupon      Coupon      @relation(fields: [couponId], references: [id], onDelete: Restrict)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+  masterOrder MasterOrder @relation(fields: [masterOrderId], references: [id], onDelete: Restrict)
+
+  @@index([couponId, createdAt])
+  @@index([userId, createdAt])
+  @@index([masterOrderId])
+  @@map("coupon_redemptions")
+}

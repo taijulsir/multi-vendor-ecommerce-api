@@ -1,0 +1,90 @@
+model Payment {
+  id                String        @id @default(uuid(7)) @db.Uuid
+  masterOrderId     String        @map("master_order_id") @db.Uuid
+  paymentNumber     String        @unique @map("payment_number")
+  status            PaymentStatus @default(PENDING)
+  method            PaymentMethod
+  currency          String        @db.Char(3)
+  amount            Decimal       @db.Decimal(14, 2)
+  paidAmount        Decimal       @default(0) @map("paid_amount") @db.Decimal(14, 2)
+  refundedAmount    Decimal       @default(0) @map("refunded_amount") @db.Decimal(14, 2)
+  provider          String
+  providerReference String?       @map("provider_reference")
+  paidAt            DateTime?     @map("paid_at")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+
+  masterOrder MasterOrder      @relation(fields: [masterOrderId], references: [id], onDelete: Restrict)
+  attempts    PaymentAttempt[]
+  refunds     Refund[]
+
+  @@index([masterOrderId])
+  @@index([status])
+  @@index([provider, providerReference])
+  @@index([createdAt])
+  @@map("payments")
+}
+
+model PaymentAttempt {
+  id                String               @id @default(uuid(7)) @db.Uuid
+  paymentId         String               @map("payment_id") @db.Uuid
+  attemptNumber     Int                  @map("attempt_number")
+  status            PaymentAttemptStatus @default(INITIATED)
+  provider          String
+  providerReference String?              @map("provider_reference")
+  amount            Decimal              @db.Decimal(14, 2)
+  currency          String               @db.Char(3)
+  failureCode       String?              @map("failure_code")
+  failureMessage    String?              @map("failure_message")
+  metadata          Json                 @default("{}")
+  initiatedAt       DateTime             @default(now()) @map("initiated_at")
+  completedAt       DateTime?            @map("completed_at")
+  createdAt         DateTime             @default(now()) @map("created_at")
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+
+  @@unique([paymentId, attemptNumber])
+  @@index([paymentId])
+  @@index([provider, providerReference])
+  @@map("payment_attempts")
+}
+
+model PaymentWebhookEvent {
+  id                String             @id @default(uuid(7)) @db.Uuid
+  provider          String
+  eventId           String             @map("event_id")
+  eventType         String             @map("event_type")
+  providerReference String?            @map("provider_reference")
+  payload           Json
+  status            WebhookEventStatus @default(RECEIVED)
+  processedAt       DateTime?          @map("processed_at")
+  errorMessage      String?            @map("error_message")
+  createdAt         DateTime           @default(now()) @map("created_at")
+
+  @@unique([provider, eventId])
+  @@index([providerReference])
+  @@index([status, createdAt])
+  @@map("payment_webhook_events")
+}
+
+model Refund {
+  id                String       @id @default(uuid(7)) @db.Uuid
+  paymentId         String       @map("payment_id") @db.Uuid
+  refundNumber      String       @unique @map("refund_number")
+  status            RefundStatus @default(PENDING)
+  amount            Decimal      @db.Decimal(14, 2)
+  currency          String       @db.Char(3)
+  reason            RefundReason
+  providerReference String?      @map("provider_reference")
+  requestedBy       String?      @map("requested_by") @db.Uuid
+  processedAt       DateTime?    @map("processed_at")
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+
+  @@index([paymentId])
+  @@index([status])
+  @@index([providerReference])
+  @@map("refunds")
+}

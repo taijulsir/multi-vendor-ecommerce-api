@@ -1,0 +1,60 @@
+model Wallet {
+  id               String       @id @default(uuid(7)) @db.Uuid
+  vendorId         String       @unique @map("vendor_id") @db.Uuid
+  currency         String       @db.Char(3)
+  balance          Decimal      @default(0) @db.Decimal(14, 2)
+  availableBalance Decimal      @default(0) @map("available_balance") @db.Decimal(14, 2)
+  pendingBalance   Decimal      @default(0) @map("pending_balance") @db.Decimal(14, 2)
+  status           WalletStatus @default(ACTIVE)
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+
+  vendor       Vendor              @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  transactions WalletTransaction[]
+
+  @@map("wallets")
+}
+
+model WalletTransaction {
+  id            String                     @id @default(uuid(7)) @db.Uuid
+  walletId      String                     @map("wallet_id") @db.Uuid
+  type          WalletTransactionType
+  direction     WalletTransactionDirection
+  amount        Decimal                    @db.Decimal(14, 2)
+  currency      String                     @db.Char(3)
+  balanceBefore Decimal                    @map("balance_before") @db.Decimal(14, 2)
+  balanceAfter  Decimal                    @map("balance_after") @db.Decimal(14, 2)
+  referenceType String?                    @map("reference_type")
+  referenceId   String?                    @map("reference_id")
+  description   String?
+  metadata      Json                       @default("{}")
+  createdAt     DateTime                   @default(now()) @map("created_at")
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Restrict)
+
+  @@index([walletId, createdAt])
+  @@index([type, createdAt])
+  @@index([referenceType, referenceId])
+  @@map("wallet_transactions")
+}
+
+model Commission {
+  id               String           @id @default(uuid(7)) @db.Uuid
+  vendorOrderId    String           @unique @map("vendor_order_id") @db.Uuid
+  vendorId         String           @map("vendor_id") @db.Uuid
+  type             CommissionType   @default(PERCENTAGE)
+  rate             Decimal?         @db.Decimal(5, 2)
+  grossAmount      Decimal          @map("gross_amount") @db.Decimal(14, 2)
+  commissionAmount Decimal          @map("commission_amount") @db.Decimal(14, 2)
+  currency         String           @db.Char(3)
+  status           CommissionStatus @default(PENDING)
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+
+  vendorOrder VendorOrder @relation(fields: [vendorOrderId], references: [id], onDelete: Restrict)
+  vendor      Vendor      @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+
+  @@index([vendorId])
+  @@index([status, createdAt])
+  @@map("commissions")
+}

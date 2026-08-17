@@ -1,0 +1,43 @@
+model Vendor {
+  id                 String                   @id @default(uuid(7)) @db.Uuid
+  userId             String                   @unique @map("user_id") @db.Uuid
+  businessName       String                   @map("business_name")
+  businessEmail      String?                  @map("business_email")
+  businessPhone      String?                  @map("business_phone")
+  status             VendorStatus             @default(PENDING)
+  verificationStatus VendorVerificationStatus @default(PENDING) @map("verification_status")
+  verifiedAt         DateTime?                @map("verified_at")
+  createdAt          DateTime                 @default(now()) @map("created_at")
+  updatedAt          DateTime                 @updatedAt @map("updated_at")
+  deletedAt          DateTime?                @map("deleted_at")
+
+  user         User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  shop         Shop?
+  products     Product[]
+  vendorOrders VendorOrder[]
+  wallet       Wallet?
+  commissions  Commission[]
+  promotions   PromotionVendor[]
+
+  @@index([status])
+  @@index([verificationStatus])
+  @@map("vendors")
+}
+
+model Shop {
+  id          String     @id @default(uuid(7)) @db.Uuid
+  vendorId    String     @unique @map("vendor_id") @db.Uuid
+  name        String
+  slug        String     @unique
+  description String?
+  logoUrl     String?    @map("logo_url")
+  bannerUrl   String?    @map("banner_url")
+  status      ShopStatus @default(ACTIVE)
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+  deletedAt   DateTime?  @map("deleted_at")
+
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+
+  @@map("shops")
+}

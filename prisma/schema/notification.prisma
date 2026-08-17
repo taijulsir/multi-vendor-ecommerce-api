@@ -1,0 +1,21 @@
+model Notification {
+  id        String             @id @default(uuid(7)) @db.Uuid
+  userId    String             @map("user_id") @db.Uuid
+  type      NotificationType
+  title     String
+  message   String
+  data      Json               @default("{}")
+  status    NotificationStatus @default(UNREAD)
+  readAt    DateTime?          @map("read_at")
+  expiresAt DateTime?          @map("expires_at")
+  createdAt DateTime           @default(now()) @map("created_at")
+  updatedAt DateTime           @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, status, createdAt])
+  @@index([userId, createdAt])
+  @@index([type, createdAt])
+  @@index([expiresAt])
+  @@map("notifications")
+}

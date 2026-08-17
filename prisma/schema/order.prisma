@@ -1,0 +1,129 @@
+model MasterOrder {
+  id                      String             @id @default(uuid(7)) @db.Uuid
+  orderNumber             String             @unique @map("order_number")
+  userId                  String             @map("user_id") @db.Uuid
+  status                  MasterOrderStatus  @default(PENDING)
+  currency                String             @db.Char(3)
+  subtotal                Decimal            @default(0) @db.Decimal(14, 2)
+  discountAmount          Decimal            @default(0) @map("discount_amount") @db.Decimal(14, 2)
+  shippingAmount          Decimal            @default(0) @map("shipping_amount") @db.Decimal(14, 2)
+  taxAmount               Decimal            @default(0) @map("tax_amount") @db.Decimal(14, 2)
+  serviceFee              Decimal            @default(0) @map("service_fee") @db.Decimal(14, 2)
+  totalAmount             Decimal            @default(0) @map("total_amount") @db.Decimal(14, 2)
+  paymentStatus           OrderPaymentStatus @default(PENDING) @map("payment_status")
+  shippingAddressSnapshot Json               @map("shipping_address_snapshot")
+  billingAddressSnapshot  Json               @map("billing_address_snapshot")
+  customerNote            String?            @map("customer_note")
+  placedAt                DateTime?          @map("placed_at")
+  createdAt               DateTime           @default(now()) @map("created_at")
+  updatedAt               DateTime           @updatedAt @map("updated_at")
+  cancelledAt             DateTime?          @map("cancelled_at")
+
+  user              User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+  vendorOrders      VendorOrder[]
+  statusHistory     OrderStatusHistory[]
+  payments          Payment[]
+  couponRedemptions CouponRedemption[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([paymentStatus])
+  @@index([createdAt])
+  @@map("master_orders")
+}
+
+model VendorOrder {
+  id               String            @id @default(uuid(7)) @db.Uuid
+  masterOrderId    String            @map("master_order_id") @db.Uuid
+  vendorId         String            @map("vendor_id") @db.Uuid
+  orderNumber      String            @unique @map("order_number")
+  status           VendorOrderStatus @default(PENDING)
+  subtotal         Decimal           @default(0) @db.Decimal(14, 2)
+  discountAmount   Decimal           @default(0) @map("discount_amount") @db.Decimal(14, 2)
+  shippingAmount   Decimal           @default(0) @map("shipping_amount") @db.Decimal(14, 2)
+  taxAmount        Decimal           @default(0) @map("tax_amount") @db.Decimal(14, 2)
+  commissionAmount Decimal           @default(0) @map("commission_amount") @db.Decimal(14, 2)
+  vendorNetAmount  Decimal           @default(0) @map("vendor_net_amount") @db.Decimal(14, 2)
+  totalAmount      Decimal           @default(0) @map("total_amount") @db.Decimal(14, 2)
+  trackingNumber   String?           @map("tracking_number")
+  shippingProvider String?           @map("shipping_provider")
+  shippedAt        DateTime?         @map("shipped_at")
+  deliveredAt      DateTime?         @map("delivered_at")
+  cancelledAt      DateTime?         @map("cancelled_at")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+
+  masterOrder   MasterOrder                @relation(fields: [masterOrderId], references: [id], onDelete: Restrict)
+  vendor        Vendor                     @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  items         OrderItem[]
+  statusHistory VendorOrderStatusHistory[]
+  commission    Commission?
+
+  @@unique([masterOrderId, vendorId])
+  @@index([masterOrderId])
+  @@index([vendorId])
+  @@index([status])
+  @@map("vendor_orders")
+}
+
+model OrderItem {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  vendorOrderId  String   @map("vendor_order_id") @db.Uuid
+  productId      String   @map("product_id") @db.Uuid
+  variantId      String   @map("variant_id") @db.Uuid
+  productName    String   @map("product_name")
+  variantName    String?  @map("variant_name")
+  sku            String
+  attributes     Json     @default("{}")
+  unitPrice      Decimal  @map("unit_price") @db.Decimal(14, 2)
+  quantity       Int
+  discountAmount Decimal  @default(0) @map("discount_amount") @db.Decimal(14, 2)
+  taxAmount      Decimal  @default(0) @map("tax_amount") @db.Decimal(14, 2)
+  totalAmount    Decimal  @default(0) @map("total_amount") @db.Decimal(14, 2)
+  currency       String   @db.Char(3)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  vendorOrder VendorOrder    @relation(fields: [vendorOrderId], references: [id], onDelete: Restrict)
+  product     Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant     ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  review      Review?
+
+  @@index([vendorOrderId])
+  @@index([productId])
+  @@index([variantId])
+  @@map("order_items")
+}
+
+model OrderStatusHistory {
+  id            String             @id @default(uuid(7)) @db.Uuid
+  masterOrderId String             @map("master_order_id") @db.Uuid
+  fromStatus    MasterOrderStatus? @map("from_status")
+  toStatus      MasterOrderStatus  @map("to_status")
+  reason        String?
+  note          String?
+  changedBy     String?            @map("changed_by") @db.Uuid
+  createdAt     DateTime           @default(now()) @map("created_at")
+
+  masterOrder MasterOrder @relation(fields: [masterOrderId], references: [id], onDelete: Cascade)
+
+  @@index([masterOrderId, createdAt])
+  @@index([changedBy])
+  @@map("order_status_histories")
+}
+
+model VendorOrderStatusHistory {
+  id            String             @id @default(uuid(7)) @db.Uuid
+  vendorOrderId String             @map("vendor_order_id") @db.Uuid
+  fromStatus    VendorOrderStatus? @map("from_status")
+  toStatus      VendorOrderStatus  @map("to_status")
+  reason        String?
+  note          String?
+  changedBy     String?            @map("changed_by") @db.Uuid
+  createdAt     DateTime           @default(now()) @map("created_at")
+
+  vendorOrder VendorOrder @relation(fields: [vendorOrderId], references: [id], onDelete: Cascade)
+
+  @@index([vendorOrderId, createdAt])
+  @@index([changedBy])
+  @@map("vendor_order_status_histories")
+}
