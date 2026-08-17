@@ -1,10 +1,7 @@
 import { Module } from '@nestjs/common';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { BullModule } from '@nestjs/bullmq';
-import { QueueModule } from './queue/queue.module';
 import { validateEnvironment } from './config/env.validation';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { HealthModule } from './health/health.module';
@@ -30,11 +27,8 @@ import { HealthModule } from './health/health.module';
         },
       }),
     }),
-    QueueModule,
     HealthModule,
   ],
-  controllers: [AppController],
-  providers: [AppService],
 
 })
 export class AppModule { }

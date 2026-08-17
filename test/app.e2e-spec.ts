@@ -5,7 +5,7 @@ import { App } from 'supertest/types';
 
 import { AppModule } from './../src/app.module';
 
-describe('AppController (e2e)', () => {
+describe('Health API (e2e)', () => {
   let app: INestApplication<App>;
 
   beforeAll(async () => {
@@ -24,12 +24,6 @@ describe('AppController (e2e)', () => {
     await app.close();
   });
 
-  it('/api (GET)', () => {
-    return request(app.getHttpServer())
-      .get('/api')
-      .expect(200)
-      .expect('Hello World!');
-  });
   it('/api/health (GET)', () => {
     return request(app.getHttpServer())
       .get('/api/health')
