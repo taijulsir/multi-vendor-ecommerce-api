@@ -210,4 +210,115 @@ describe('Auth API (e2e)', () => {
       },
     );
   });
+
+  describe('GET /api/auth/me', () => {
+    const password = 'StrongPassw0rd!';
+
+    const registerAndLogin = async () => {
+      const email = uniqueEmail();
+      registeredEmails.push(email);
+
+      await request(app.getHttpServer())
+        .post('/api/auth/register')
+        .send({ email, password, firstName: 'Jane' })
+        .expect(201);
+
+      const loginResponse = await request(app.getHttpServer())
+        .post('/api/auth/login')
+        .send({ email, password })
+        .expect(200);
+
+      return {
+        email,
+        id: loginResponse.body.id as string,
+        accessToken: loginResponse.body.accessToken as string,
+      };
+    };
+
+    it('returns the authenticated user for a valid access token and hides sensitive fields', async () => {
+      const { email, id, accessToken } = await registerAndLogin();
+
+      const response = await request(app.getHttpServer())
+        .get('/api/auth/me')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(response.body.id).toBe(id);
+      expect(response.body.email).toBe(email);
+      expect(response.body).not.toHaveProperty('passwordHash');
+      expect(response.body).not.toHaveProperty('password');
+      expect(response.body).not.toHaveProperty('accessToken');
+      expect(response.body).not.toHaveProperty('refreshToken');
+    });
+
+    it('rejects a request with no Authorization header with 401', async () => {
+      await request(app.getHttpServer()).get('/api/auth/me').expect(401);
+    });
+
+    it.each([
+      ['missing the Bearer scheme', (token: string) => token],
+      ['not a JWT at all', () => 'Bearer not-a-jwt-token'],
+      ['using an unsupported scheme', (token: string) => `Token ${token}`],
+    ])(
+      'rejects a malformed Authorization header (%s) with 401',
+      async (_label, buildHeader) => {
+        const { accessToken } = await registerAndLogin();
+
+        await request(app.getHttpServer())
+          .get('/api/auth/me')
+          .set('Authorization', buildHeader(accessToken))
+          .expect(401);
+      },
+    );
+
+    it('rejects a token with an invalid signature with 401', async () => {
+      const { accessToken } = await registerAndLogin();
+
+      // Flip the last character of the signature segment so the payload
+      // is otherwise well-formed but the signature no longer verifies.
+      const tampered = accessToken.slice(0, -1) + (accessToken.endsWith('a') ? 'b' : 'a');
+
+      await request(app.getHttpServer())
+        .get('/api/auth/me')
+        .set('Authorization', `Bearer ${tampered}`)
+        .expect(401);
+    });
+
+    it('rejects an expired token with 401', async () => {
+      const { id } = await registerAndLogin();
+      const expiredToken = await jwtService.signAsync(
+        { sub: id },
+        { expiresIn: -10 },
+      );
+
+      await request(app.getHttpServer())
+        .get('/api/auth/me')
+        .set('Authorization', `Bearer ${expiredToken}`)
+        .expect(401);
+    });
+
+    it('rejects a token whose sub does not match any user with 401', async () => {
+      const tokenForUnknownUser = await jwtService.signAsync({
+        sub: randomUUID(),
+      });
+
+      await request(app.getHttpServer())
+        .get('/api/auth/me')
+        .set('Authorization', `Bearer ${tokenForUnknownUser}`)
+        .expect(401);
+    });
+
+    it.each(['SUSPENDED', 'BLOCKED'] as const)(
+      'rejects a token for a %s account with 401, even though the token itself is otherwise valid',
+      async (status) => {
+        const { email, accessToken } = await registerAndLogin();
+        await prisma.user.update({ where: { email }, data: { status } });
+
+        await request(app.getHttpServer())
+          .get('/api/auth/me')
+          .set('Authorization', `Bearer ${accessToken}`)
+          .expect(401);
+      },
+    );
+  });
 });

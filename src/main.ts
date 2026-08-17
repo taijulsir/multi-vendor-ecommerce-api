@@ -20,6 +20,7 @@ async function bootstrap() {
     .setTitle('Multi-Vendor E-Commerce API')
     .setDescription('Backend API documentation')
     .setVersion('1.0')
+    .addBearerAuth()
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

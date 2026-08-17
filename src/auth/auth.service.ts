@@ -6,15 +6,16 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 
-import { Prisma, type User, type UserStatus } from '../generated/prisma/client';
+import { Prisma, type UserStatus } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { PasswordService } from './password/password.service';
 import { JwtPayload } from './types/jwt-payload';
+import { isAuthenticatable } from './utils/account-status';
+import { toSafeUser, type SafeUser } from './utils/safe-user';
 
-/** `User` with the sensitive `passwordHash` field removed. */
-export type SafeUser = Omit<User, 'passwordHash'>;
+export type { SafeUser };
 
 /** Login response: the safe user representation plus the signed access token. */
 export type LoginResult = SafeUser & { accessToken: string };
@@ -68,7 +69,7 @@ export class AuthService {
         },
       });
 
-      return this.toSafeUser(user);
+      return toSafeUser(user);
     } catch (error) {
       // A concurrent request can pass the existence check above and still
       // race to insert the same email; the database's unique constraint is
@@ -129,7 +130,7 @@ export class AuthService {
     const payload: JwtPayload = { sub: updatedUser.id };
     const accessToken = await this.jwtService.signAsync(payload);
 
-    return { ...this.toSafeUser(updatedUser), accessToken };
+    return { ...toSafeUser(updatedUser), accessToken };
   }
 
   /**
@@ -146,7 +147,7 @@ export class AuthService {
    *    See the final report for this task for the flagged ambiguity.
    */
   private assertCanAuthenticate(status: UserStatus): void {
-    if (status === 'ACTIVE') {
+    if (isAuthenticatable(status)) {
       return;
     }
 
@@ -161,22 +162,5 @@ export class AuthService {
     // Fail closed on any status the architecture has not defined login
     // behavior for, rather than silently allowing authentication.
     throw new ForbiddenException('Account is not permitted to authenticate.');
-  }
-
-  private toSafeUser(user: User): SafeUser {
-    return {
-      id: user.id,
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      phone: user.phone,
-      avatarUrl: user.avatarUrl,
-      status: user.status,
-      emailVerifiedAt: user.emailVerifiedAt,
-      lastLoginAt: user.lastLoginAt,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-      deletedAt: user.deletedAt,
-    };
   }
 }
