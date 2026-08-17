@@ -1,98 +1,365 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Multi-Vendor E-Commerce API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Backend API for a production-oriented multi-vendor e-commerce platform.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+Built with NestJS, TypeScript, PostgreSQL, Prisma, Redis, and BullMQ.
 
-## Description
+---
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## Tech Stack
 
-## Project setup
+- Node.js 22 LTS
+- NestJS
+- TypeScript
+- PostgreSQL
+- Prisma ORM
+- Redis
+- BullMQ
+- Docker Compose
+- Jest
+- Supertest
+- Swagger / OpenAPI
+
+---
+
+## Architecture Foundation
+
+The current backend foundation includes:
+
+- Environment configuration and validation
+- PostgreSQL database integration
+- Prisma ORM
+- Redis integration
+- BullMQ infrastructure
+- Application health checks
+- Global request validation
+- Swagger API documentation
+- Unit testing
+- End-to-end testing
+- Dockerized PostgreSQL and Redis
+- Node.js version management with `.nvmrc`
+
+---
+
+## Project Structure
+
+```text
+src/
+├── config/
+│   └── env.validation.ts
+├── health/
+│   ├── health.controller.ts
+│   ├── health.module.ts
+│   ├── health.service.ts
+│   └── health.service.spec.ts
+├── prisma/
+│   ├── prisma.module.ts
+│   └── prisma.service.ts
+├── redis/
+│   ├── redis.module.ts
+│   └── redis.service.ts
+├── app.module.ts
+└── main.ts
+
+prisma/
+└── schema/
+
+test/
+├── app.e2e-spec.ts
+└── jest-e2e.json
+
+docs/
+├── database/
+└── plans/
+````
+
+---
+
+## Requirements
+
+* Node.js 22 LTS
+* npm
+* Docker
+* Docker Compose
+
+The project uses `.nvmrc` to define the expected Node.js major version.
 
 ```bash
-$ npm install
+nvm use
 ```
 
-## Compile and run the project
+---
+
+## Installation
+
+Clone the repository and install dependencies:
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+npm install
 ```
 
-## Run tests
+Create the local environment file:
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+cp .env.example .env
 ```
 
-## Deployment
+Update `.env` with the required local configuration.
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+---
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+## Local Infrastructure
+
+PostgreSQL and Redis run through Docker Compose.
+
+Start the infrastructure:
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+docker compose up -d
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+Check service status:
 
-## Resources
+```bash
+docker compose ps
+```
 
-Check out a few resources that may come in handy when working with NestJS:
+Expected services:
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+```text
+postgres
+redis
+```
 
-## Support
+PostgreSQL is exposed locally on:
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+```text
+localhost:5433
+```
 
-## Stay in touch
+Redis is exposed locally on:
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+```text
+localhost:6379
+```
 
-## License
+Stop the infrastructure:
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+```bash
+docker compose down
+```
+
+---
+
+## Database
+
+Generate the Prisma client:
+
+```bash
+npx prisma generate
+```
+
+Prisma schema files are located under:
+
+```text
+prisma/schema/
+```
+
+Database documentation is available under:
+
+```text
+docs/database/
+```
+
+---
+
+## Running the Application
+
+Development mode:
+
+```bash
+npm run start:dev
+```
+
+Production build:
+
+```bash
+npm run build
+```
+
+Production mode:
+
+```bash
+npm run start:prod
+```
+
+---
+
+## API
+
+The application uses the global API prefix:
+
+```text
+/api
+```
+
+### Health Check
+
+```http
+GET /api/health
+```
+
+Example response:
+
+```json
+{
+  "status": "ok",
+  "services": {
+    "database": "up",
+    "redis": "up"
+  },
+  "timestamp": "2026-08-17T00:00:00.000Z"
+}
+```
+
+---
+
+## API Documentation
+
+Swagger documentation is available during local development at:
+
+```text
+http://localhost:3000/api/docs
+```
+
+---
+
+## Testing
+
+### Unit tests
+
+```bash
+npm test -- --runInBand
+```
+
+### E2E tests
+
+```bash
+npm run test:e2e -- --runInBand
+```
+
+### Coverage
+
+```bash
+npm run test:cov
+```
+
+The E2E test suite uses Node's VM modules support through the configured test script.
+
+---
+
+## Code Quality
+
+Build the project:
+
+```bash
+npm run build
+```
+
+Check formatting issues:
+
+```bash
+git diff --check
+```
+
+Run linting:
+
+```bash
+npm run lint
+```
+
+---
+
+## Security
+
+Check dependency vulnerabilities:
+
+```bash
+npm audit
+```
+
+Dependency vulnerabilities should be reviewed before applying forced upgrades.
+
+---
+
+## Environment Variables
+
+Example environment configuration is available in:
+
+```text
+.env.example
+```
+
+Required configuration includes:
+
+* Application port
+* PostgreSQL connection
+* Redis connection
+* JWT access secret
+* JWT refresh secret
+* Token expiration settings
+
+Never commit the actual `.env` file or production secrets.
+
+---
+
+## Documentation
+
+### Database Documentation
+
+Detailed database domain documentation is available under:
+
+```text
+docs/database/
+```
+
+Current domains include:
+
+* Identity & Access
+* Vendor & Shop
+* Catalog
+* Cart
+* Order
+* Payment & Refund
+* Promotion
+* Review
+* Notification
+* Wallet & Commission
+* Audit
+
+### Implementation Plan
+
+The database implementation plan is available at:
+
+```text
+docs/plans/database-implementation-plan.md
+```
+
+---
+
+## Development Principles
+
+The project is being developed incrementally with emphasis on:
+
+* Modular NestJS architecture
+* Strong TypeScript typing
+* Clear separation of concerns
+* Database integrity
+* Transaction-safe business operations
+* Redis-backed infrastructure
+* Asynchronous processing with BullMQ
+* Automated testing
+* Environment validation
+* Production-oriented deployment practices
+
+````
