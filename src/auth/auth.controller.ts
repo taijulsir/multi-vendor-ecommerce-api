@@ -29,7 +29,28 @@ export class AuthController {
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Authenticate with email and password' })
-  @ApiOkResponse({ description: 'Login successful' })
+  @ApiOkResponse({
+    description:
+      'Login successful. Returns the authenticated user together with a ' +
+      'short-lived JWT access token (see JWT_ACCESS_EXPIRES_IN).',
+    schema: {
+      example: {
+        id: 'b3f1c2a0-1234-4a5b-8c9d-0e1f2a3b4c5d',
+        email: 'jane.doe@example.com',
+        firstName: 'Jane',
+        lastName: 'Doe',
+        phone: null,
+        avatarUrl: null,
+        status: 'ACTIVE',
+        emailVerifiedAt: null,
+        lastLoginAt: '2026-01-01T00:00:00.000Z',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        deletedAt: null,
+        accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+      },
+    },
+  })
   @ApiUnauthorizedResponse({ description: 'Invalid email or password' })
   @ApiForbiddenResponse({
     description: 'Account is not permitted to authenticate',

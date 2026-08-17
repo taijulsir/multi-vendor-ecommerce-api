@@ -4,15 +4,20 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 
 import { Prisma, type User, type UserStatus } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { PasswordService } from './password/password.service';
+import { JwtPayload } from './types/jwt-payload';
 
 /** `User` with the sensitive `passwordHash` field removed. */
 export type SafeUser = Omit<User, 'passwordHash'>;
+
+/** Login response: the safe user representation plus the signed access token. */
+export type LoginResult = SafeUser & { accessToken: string };
 
 const PRISMA_UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
 
@@ -25,6 +30,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly passwordService: PasswordService,
+    private readonly jwtService: JwtService,
   ) {}
 
   async register(dto: RegisterDto): Promise<SafeUser> {
@@ -79,7 +85,7 @@ export class AuthService {
     }
   }
 
-  async login(dto: LoginDto): Promise<SafeUser> {
+  async login(dto: LoginDto): Promise<LoginResult> {
     // Email is normalized the same way as RegisterDto (trim + lower-case),
     // via LoginDto's @Transform — see docs/database/identity-access.md
     // "Email Normalization".
@@ -115,7 +121,15 @@ export class AuthService {
       data: { lastLoginAt: new Date() },
     });
 
-    return this.toSafeUser(updatedUser);
+    // Signed only after credentials + status are confirmed and lastLoginAt
+    // is persisted, per this phase's required ordering. Payload is
+    // deliberately minimal — see JwtPayload. Expiration/secret/algorithm
+    // are centralized in AuthModule's JwtModule.registerAsync(), not
+    // hard-coded here.
+    const payload: JwtPayload = { sub: updatedUser.id };
+    const accessToken = await this.jwtService.signAsync(payload);
+
+    return { ...this.toSafeUser(updatedUser), accessToken };
   }
 
   /**

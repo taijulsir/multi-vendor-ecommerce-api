@@ -1,7 +1,13 @@
 export function validateEnvironment(
   config: Record<string, unknown>,
 ): Record<string, unknown> {
-  const required = ['DATABASE_URL', 'REDIS_HOST', 'REDIS_PORT'];
+  const required = [
+    'DATABASE_URL',
+    'REDIS_HOST',
+    'REDIS_PORT',
+    'JWT_ACCESS_SECRET',
+    'JWT_ACCESS_EXPIRES_IN',
+  ];
 
   for (const key of required) {
     const value = config[key];

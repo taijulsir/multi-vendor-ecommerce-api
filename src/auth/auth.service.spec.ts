@@ -25,6 +25,10 @@ describe('AuthService', () => {
     verify: jest.fn(),
   };
 
+  const jwtService = {
+    signAsync: jest.fn(),
+  };
+
   const dto: RegisterDto = {
     email: 'jane.doe@example.com',
     password: 'StrongPassw0rd!',
@@ -51,7 +55,11 @@ describe('AuthService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new AuthService(prisma as any, passwordService as any);
+    service = new AuthService(
+      prisma as any,
+      passwordService as any,
+      jwtService as any,
+    );
   });
 
   describe('register', () => {
@@ -142,7 +150,7 @@ describe('AuthService', () => {
 
     const activeUser = { ...persistedUser, status: 'ACTIVE' };
 
-    it('verifies the password, updates lastLoginAt, and returns the user without passwordHash', async () => {
+    it('verifies the password, updates lastLoginAt, signs a token, and returns the user without passwordHash', async () => {
       const updatedUser = {
         ...activeUser,
         lastLoginAt: new Date('2026-01-02T00:00:00.000Z'),
@@ -151,6 +159,7 @@ describe('AuthService', () => {
       prisma.user.findUnique.mockResolvedValue(activeUser);
       passwordService.verify.mockResolvedValue(true);
       prisma.user.update.mockResolvedValue(updatedUser);
+      jwtService.signAsync.mockResolvedValue('signed-jwt-token');
 
       const result = await service.login(loginDto);
 
@@ -165,13 +174,20 @@ describe('AuthService', () => {
         where: { id: activeUser.id },
         data: { lastLoginAt: expect.any(Date) },
       });
+      expect(jwtService.signAsync).toHaveBeenCalledTimes(1);
+      expect(jwtService.signAsync).toHaveBeenCalledWith({
+        sub: updatedUser.id,
+      });
 
       expect(result.lastLoginAt).toEqual(updatedUser.lastLoginAt);
+      expect(result.accessToken).toBe('signed-jwt-token');
       expect(result).not.toHaveProperty('passwordHash');
+      expect(result).not.toHaveProperty('password');
+      expect(result).not.toHaveProperty('refreshToken');
       expect(JSON.stringify(result)).not.toContain(activeUser.passwordHash);
     });
 
-    it('rejects with a generic error and does not update lastLoginAt for an unknown email', async () => {
+    it('rejects with a generic error, does not update lastLoginAt, and does not sign a token for an unknown email', async () => {
       prisma.user.findUnique.mockResolvedValue(null);
 
       await expect(service.login(loginDto)).rejects.toBeInstanceOf(
@@ -183,9 +199,10 @@ describe('AuthService', () => {
 
       expect(passwordService.verify).not.toHaveBeenCalled();
       expect(prisma.user.update).not.toHaveBeenCalled();
+      expect(jwtService.signAsync).not.toHaveBeenCalled();
     });
 
-    it('rejects with the same generic error and does not update lastLoginAt for a wrong password', async () => {
+    it('rejects with the same generic error, does not update lastLoginAt, and does not sign a token for a wrong password', async () => {
       prisma.user.findUnique.mockResolvedValue(activeUser);
       passwordService.verify.mockResolvedValue(false);
 
@@ -197,9 +214,10 @@ describe('AuthService', () => {
       );
 
       expect(prisma.user.update).not.toHaveBeenCalled();
+      expect(jwtService.signAsync).not.toHaveBeenCalled();
     });
 
-    it('propagates password verification errors and does not update lastLoginAt', async () => {
+    it('propagates password verification errors, does not update lastLoginAt, and does not sign a token', async () => {
       prisma.user.findUnique.mockResolvedValue(activeUser);
       passwordService.verify.mockRejectedValue(
         new Error('argon2 verify failed'),
@@ -210,10 +228,11 @@ describe('AuthService', () => {
       );
 
       expect(prisma.user.update).not.toHaveBeenCalled();
+      expect(jwtService.signAsync).not.toHaveBeenCalled();
     });
 
     it.each(['SUSPENDED', 'BLOCKED'] as const)(
-      'rejects a %s account with ForbiddenException and does not update lastLoginAt',
+      'rejects a %s account with ForbiddenException, does not update lastLoginAt, and does not sign a token',
       async (status) => {
         prisma.user.findUnique.mockResolvedValue({ ...activeUser, status });
         passwordService.verify.mockResolvedValue(true);
@@ -223,10 +242,11 @@ describe('AuthService', () => {
         );
 
         expect(prisma.user.update).not.toHaveBeenCalled();
+        expect(jwtService.signAsync).not.toHaveBeenCalled();
       },
     );
 
-    it('propagates lastLoginAt persistence failures instead of swallowing them', async () => {
+    it('propagates lastLoginAt persistence failures instead of swallowing them, and does not sign a token', async () => {
       prisma.user.findUnique.mockResolvedValue(activeUser);
       passwordService.verify.mockResolvedValue(true);
       prisma.user.update.mockRejectedValue(
@@ -236,6 +256,26 @@ describe('AuthService', () => {
       await expect(service.login(loginDto)).rejects.toThrow(
         'connection terminated unexpectedly',
       );
+
+      expect(jwtService.signAsync).not.toHaveBeenCalled();
+    });
+
+    it('propagates JWT signing failures after lastLoginAt has already been persisted', async () => {
+      const updatedUser = {
+        ...activeUser,
+        lastLoginAt: new Date('2026-01-02T00:00:00.000Z'),
+      };
+
+      prisma.user.findUnique.mockResolvedValue(activeUser);
+      passwordService.verify.mockResolvedValue(true);
+      prisma.user.update.mockResolvedValue(updatedUser);
+      jwtService.signAsync.mockRejectedValue(new Error('signing key error'));
+
+      await expect(service.login(loginDto)).rejects.toThrow(
+        'signing key error',
+      );
+
+      expect(prisma.user.update).toHaveBeenCalledTimes(1);
     });
   });
 });

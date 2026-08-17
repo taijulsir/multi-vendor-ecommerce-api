@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { JwtService } from '@nestjs/jwt';
 import request from 'supertest';
 import { App } from 'supertest/types';
 
@@ -11,6 +12,7 @@ import { PrismaService } from './../src/prisma/prisma.service';
 describe('Auth API (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
+  let jwtService: JwtService;
   const registeredEmails: string[] = [];
 
   const uniqueEmail = () => `auth-e2e-${randomUUID()}@example.com`;
@@ -22,6 +24,7 @@ describe('Auth API (e2e)', () => {
 
     app = moduleFixture.createNestApplication();
     prisma = app.get(PrismaService);
+    jwtService = app.get(JwtService);
 
     app.setGlobalPrefix('api');
     app.useGlobalPipes(
@@ -114,7 +117,7 @@ describe('Auth API (e2e)', () => {
       return email;
     };
 
-    it('logs in with correct credentials, updates lastLoginAt, and hides sensitive fields', async () => {
+    it('logs in with correct credentials, returns a valid access token, and hides sensitive fields', async () => {
       const email = await registerTestUser();
 
       const response = await request(app.getHttpServer())
@@ -127,6 +130,28 @@ describe('Auth API (e2e)', () => {
       expect(response.body.lastLoginAt).toEqual(expect.any(String));
       expect(response.body).not.toHaveProperty('password');
       expect(response.body).not.toHaveProperty('passwordHash');
+      expect(response.body).not.toHaveProperty('refreshToken');
+
+      // accessToken: present, non-empty string.
+      expect(typeof response.body.accessToken).toBe('string');
+      expect(response.body.accessToken.length).toBeGreaterThan(0);
+
+      // Structural assertions on the token itself: verifies it was signed
+      // with the app's actual configured secret, carries the expected
+      // `sub` identity claim (no password/roles/other data), and expires
+      // according to the configured JWT_ACCESS_EXPIRES_IN window.
+      const payload = await jwtService.verifyAsync<{
+        sub: string;
+        iat: number;
+        exp: number;
+      }>(response.body.accessToken as string);
+
+      expect(payload.sub).toBe(response.body.id);
+      expect(payload).not.toHaveProperty('password');
+      expect(payload).not.toHaveProperty('passwordHash');
+      expect(typeof payload.exp).toBe('number');
+      expect(payload.exp).toBeGreaterThan(payload.iat);
+      expect(payload.exp - payload.iat).toBe(15 * 60); // JWT_ACCESS_EXPIRES_IN=15m
 
       const userInDb = await prisma.user.findUniqueOrThrow({
         where: { email },
@@ -143,6 +168,7 @@ describe('Auth API (e2e)', () => {
         .expect(401);
 
       expect(response.body).not.toHaveProperty('passwordHash');
+      expect(response.body).not.toHaveProperty('accessToken');
 
       const userInDb = await prisma.user.findUniqueOrThrow({
         where: { email },
@@ -170,10 +196,12 @@ describe('Auth API (e2e)', () => {
         const email = await registerTestUser();
         await prisma.user.update({ where: { email }, data: { status } });
 
-        await request(app.getHttpServer())
+        const response = await request(app.getHttpServer())
           .post('/api/auth/login')
           .send({ email, password })
           .expect(403);
+
+        expect(response.body).not.toHaveProperty('accessToken');
 
         const userInDb = await prisma.user.findUniqueOrThrow({
           where: { email },
