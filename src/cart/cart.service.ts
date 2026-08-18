@@ -5,6 +5,7 @@ import {
   Injectable,
 } from '@nestjs/common';
 
+import { isProductActive, isVendorActive } from '../catalog/products/utils/availability';
 import { Prisma, type Cart, type CartItem } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AddCartItemDto } from './dto/add-cart-item.dto';
@@ -237,11 +238,8 @@ export class CartService {
 
     const { product } = variant;
 
-    if (product.deletedAt || product.status !== 'ACTIVE') {
-      throw new BadRequestException(INVALID_VARIANT_MESSAGE);
-    }
-
-    if (product.vendor.deletedAt || product.vendor.status !== 'ACTIVE') {
+    // Shared with CheckoutService — see availability.ts's doc-comment.
+    if (!isProductActive(product) || !isVendorActive(product.vendor)) {
       throw new BadRequestException(INVALID_VARIANT_MESSAGE);
     }
 

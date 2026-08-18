@@ -1609,20 +1609,46 @@ Vendor isolation model                APPROVED
 Idempotency requirement               APPROVED
 Concurrency requirements              APPROVED
 
-Prisma models                         NOT IMPLEMENTED
-Database migration                    NOT CREATED
-API implementation                    NOT IMPLEMENTED
+Prisma models                         IMPLEMENTED
+Database migration                    CREATED
+API implementation                    PARTIALLY IMPLEMENTED (Phase 13 — checkout only)
 Payment integration                   NOT IMPLEMENTED
 Refund integration                    NOT IMPLEMENTED
 Redis integration                     NOT IMPLEMENTED
 BullMQ integration                    NOT IMPLEMENTED
-Tests                                 NOT IMPLEMENTED
+Tests                                 IMPLEMENTED (Phase 13, for checkout)
 ```
 
-> This document defines the initial Order architecture. Prisma models,
-> migrations, services, APIs, checkout orchestration, payment integration,
-> Redis workflows, BullMQ jobs, and tests will be implemented after the
-> complete database architecture has been finalized.
+> Phase 13 implemented `POST /api/checkout` — Cart → MasterOrder +
+> VendorOrder(s) + OrderItem(s) creation, exactly following the §37 flow
+> (validate cart/product/variant/vendor/price/currency → reserve
+> inventory → create the order structure → record initial status history
+> → convert the cart). Order *viewing/management* (a customer or vendor
+> retrieving an already-created order, status transitions beyond the
+> initial PENDING, cancellation) remains unimplemented — this phase only
+> covers order *creation*. No Payment/PaymentAttempt record is created
+> (`MasterOrder.paymentStatus` keeps its schema default, PENDING);
+> `docs/database/payment-refund.md`'s own Implementation Status still
+> marks Payment APIs as NOT IMPLEMENTED, and `Payment.provider` has no
+> configured gateway to supply it. Likewise no Commission/WalletTransaction
+> is created — `VendorOrder.commissionAmount`/`vendorNetAmount` keep their
+> schema default (0), since no commission rate exists anywhere in the
+> persisted data model and `docs/database/wallet-commission.md`'s
+> Commission service is also NOT IMPLEMENTED. No coupon/discount is
+> accepted (`docs/database/promotion.md`'s entire domain is NOT
+> IMPLEMENTED). `shippingAmount`/`taxAmount`/`serviceFee` stay at 0 — no
+> calculation rule for either is documented anywhere in the source
+> documents. §36's order-number requirement ("not `COUNT(*)+1`") is met
+> without a Postgres sequence: a 48-bit cryptographically random suffix
+> plus the existing `orderNumber` `UNIQUE` constraint, matching this
+> codebase's established pattern for `RefreshToken`/slugs — see
+> `src/orders/utils/order-number.ts`. §35's idempotency requirement is
+> met narrowly: the atomic `Cart.status: ACTIVE → CONVERTED` transition
+> (guarded inside the same transaction as order creation) makes a
+> retried/concurrent checkout against the *same* cart fail rather than
+> create a second order; no separate idempotency-key table/header exists
+> (none is implemented in this codebase, and the source documents
+> themselves say the exact storage model is still "to be finalized").
 
 The Order domain is the authoritative representation of completed
 purchases and must preserve sufficient historical information to remain

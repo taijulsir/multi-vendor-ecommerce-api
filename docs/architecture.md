@@ -1115,6 +1115,27 @@ Commission
 
 must not become partially updated when the business operation requires atomicity.
 
+## Checkout Transaction Boundary (implemented, Phase 13)
+
+`CheckoutService.checkout` (`src/orders/`) wraps exactly the operations
+that must succeed or fail together in one `prisma.$transaction`: the
+atomic `Cart.status: ACTIVE → CONVERTED` guard, per-item inventory
+reservation, and creation of the MasterOrder / VendorOrder(s) /
+OrderItem(s) / OrderStatusHistory / VendorOrderStatusHistory /
+InventoryTransaction rows. Cart validation (ownership, non-empty) and
+product/variant/vendor/currency/inventory validation happen read-only
+*before* the transaction opens, matching the pattern already established
+by `CartService.addItem` (Phase 12) — external/slow work never happens
+inside the transaction, and nothing not requiring atomicity is placed
+inside it either.
+
+Inventory reservation itself uses a single atomic conditional `UPDATE`
+(`SET reserved = reserved + $qty WHERE ... AND on_hand - reserved >=
+$qty`, checking the affected row count) rather than a
+SELECT-then-check-then-UPDATE sequence — see
+`docs/database/catalog.md` §47's explicit warning against the latter.
+This requires no distributed lock and no Redis.
+
 ---
 
 # 26. Idempotency
@@ -1131,6 +1152,20 @@ This is especially important for:
 * Background jobs
 
 External event identifiers and internal idempotency keys should be used where appropriate.
+
+## Checkout Idempotency (implemented narrowly, Phase 13)
+
+No idempotency-key table or header exists — the source documents
+(`docs/database/order.md` §35, `docs/database/payment-refund.md` §40)
+both describe the exact key/storage model as still "to be finalized,"
+and inventing one was explicitly out of scope for this phase. Instead,
+`CheckoutService` relies on the same atomic `Cart.status` transition
+described above: a retried or concurrent checkout request against the
+*same* cart necessarily loses that guard (the cart is no longer
+`ACTIVE`) and fails cleanly rather than creating a second order. This is
+a narrower guarantee than full request-level idempotency — it does not,
+for example, deduplicate two genuinely separate checkout attempts built
+from two different carts with identical contents.
 
 ---
 

@@ -10,6 +10,7 @@ import { VendorsModule } from './vendors/vendors.module';
 import { ShopsModule } from './shops/shops.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { CartModule } from './cart/cart.module';
+import { OrdersModule } from './orders/orders.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { CartModule } from './cart/cart.module';
     ShopsModule,
     CatalogModule,
     CartModule,
+    OrdersModule,
   ],
 
 })
