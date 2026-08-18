@@ -341,6 +341,19 @@ The shop has been restricted by the platform or an administrator.
 
 ---
 
+## API Contract (Phase 10)
+
+`PATCH /api/shops/:shopId` reads "the vendor disabling the shop" (ACTIVE)
+vs "restricted by the platform or an administrator" (SUSPENDED) as the
+line between vendor-settable and administrator-only values: the owning
+vendor may set `status` to `ACTIVE` or `INACTIVE` only. `SUSPENDED` is
+rejected as an invalid request body on this endpoint — no transition
+sequence/state machine is enforced beyond that (a vendor may freely
+toggle between ACTIVE and INACTIVE). No separate administrative
+suspend/unsuspend endpoint exists yet.
+
+---
+
 # 11. Shop Slug
 
 Each shop will have a URL-friendly slug.
@@ -709,14 +722,23 @@ Verification model         APPROVED
 Business rules             APPROVED
 Constraints                APPROVED
 
-Prisma models              NOT IMPLEMENTED
-Database migration          NOT CREATED
-API implementation          NOT IMPLEMENTED
-Tests                       NOT IMPLEMENTED
+Prisma models              IMPLEMENTED
+Database migration          CREATED
+API implementation          PARTIALLY IMPLEMENTED (Phase 10)
+Tests                       IMPLEMENTED (Phase 10, for what exists)
 ```
 
-> The database schema will be implemented only after all major domain
-> specifications have been reviewed and approved.
+> Phase 10 implemented vendor onboarding (`POST /api/vendors`,
+> `GET /api/vendors/me`) and shop creation/retrieval/update
+> (`POST /api/shops`, `GET /api/shops/slug/:slug`, `GET /api/shops/:shopId`,
+> `PATCH /api/shops/:shopId`) exactly as specified above. Vendor
+> verification/activation (the `PENDING → UNDER_REVIEW → VERIFIED` /
+> `→ ACTIVE` transitions in §6) are administrative operations — no
+> endpoint for them exists yet, so a vendor created today remains
+> `status=PENDING, verificationStatus=PENDING` indefinitely until that
+> administrative capability is built in a future phase. Shop deletion is
+> also not yet implemented (§15's soft-delete field exists on the model
+> but nothing sets it via the API).
 
 This document represents the approved Vendor & Shop architecture for the
 initial multi-vendor e-commerce implementation.

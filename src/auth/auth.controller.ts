@@ -4,7 +4,6 @@ import {
   Get,
   HttpCode,
   HttpStatus,
-  Param,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -16,7 +15,6 @@ import {
   ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
-  ApiParam,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
@@ -30,7 +28,6 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDto } from './dto/register.dto';
 import { AuthorizationGuard } from './guards/authorization.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { VendorShopOwnershipGuard } from './guards/vendor-shop-ownership.guard';
 import type { SafeUser } from './utils/safe-user';
 
 @ApiTags('auth')
@@ -295,67 +292,5 @@ export class AuthController {
       message: 'You have products:read and inventory:adjust.',
       userId: user.id,
     };
-  }
-
-  // ---------------------------------------------------------------------
-  // TEMPORARY — Ownership demonstration endpoint (Phase 9).
-  //
-  // Reviewed and deliberately kept (not removed) as of the Phase 9
-  // cleanup pass: it is the only thing that exercises
-  // VendorShopOwnershipGuard through a real HTTP request — real DI
-  // wiring, real Prisma queries against real Postgres, real 401/403
-  // semantics, and a real spoofed-query-param request proving the guard
-  // truly never reads client-supplied identity fields. None of that is
-  // reproducible from AuthorizationGuard-style unit tests alone (those
-  // already fully cover every specific ownership *branch* — see
-  // ownership.service.spec.ts / vendor-shop-ownership.guard.spec.ts —
-  // but not the wiring/DB-integration layer). Removing this endpoint
-  // now would drop that integration coverage with no equivalent
-  // replacement, since a guard cannot be exercised over HTTP without
-  // *some* route attached to it.
-  //
-  // Not a real Shop management feature — no ShopModule/ShopController
-  // was created for this; see Phase 9's final report. This is
-  // deliberately the ONE entity with both (a) an explicitly documented
-  // ownership rule (docs/database/vendor-shop.md §19-20) and (b) an
-  // existing Prisma model, without inventing a fake business domain to
-  // protect.
-  //
-  // MUST be removed (and this coverage moved onto the real route) once
-  // Phase 10 implements the actual Shop controller/endpoints.
-  // ---------------------------------------------------------------------
-
-  @Get('ownership-demo/shop/:shopId')
-  @UseGuards(JwtAuthGuard, VendorShopOwnershipGuard)
-  @ApiBearerAuth()
-  @ApiParam({
-    name: 'shopId',
-    description: "The shop's id. Never trusted as an ownership claim by " +
-      "itself — the caller's own vendor identity is resolved server-side " +
-      'from the access token and checked against this shop.',
-  })
-  @ApiOperation({
-    summary:
-      '[TEMPORARY Ownership demo — remove in Phase 10] Requires the caller to own the given shop',
-    description:
-      'Demonstrates vendor-level resource-ownership authorization ' +
-      '(User → Vendor → Shop), separate from RBAC. An ADMIN may access ' +
-      "any shop; any other authenticated user may access only their " +
-      'own. Not a real Shop management endpoint — temporary, to be ' +
-      'removed once Phase 10 introduces the real Shop controller.',
-  })
-  @ApiOkResponse({ description: 'Caller owns the shop (or is an ADMIN).' })
-  @ApiUnauthorizedResponse({ description: 'Missing/invalid access token.' })
-  @ApiForbiddenResponse({
-    description:
-      'Authenticated, but does not own this shop. Intentionally ' +
-      'generic — identical whether the shop belongs to another vendor, ' +
-      "does not exist, or the caller has no vendor profile at all.",
-  })
-  ownershipDemoShop(
-    @CurrentUser() user: SafeUser,
-    @Param('shopId') shopId: string,
-  ) {
-    return { message: 'You own this shop.', userId: user.id, shopId };
   }
 }

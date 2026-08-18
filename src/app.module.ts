@@ -6,6 +6,8 @@ import { validateEnvironment } from './config/env.validation';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
+import { VendorsModule } from './vendors/vendors.module';
+import { ShopsModule } from './shops/shops.module';
 
 @Module({
   imports: [
@@ -30,6 +32,8 @@ import { AuthModule } from './auth/auth.module';
     }),
     HealthModule,
     AuthModule,
+    VendorsModule,
+    ShopsModule,
   ],
 
 })
