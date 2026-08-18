@@ -11,21 +11,19 @@ import { PrismaService } from '../../prisma/prisma.service';
  * "Ownership vs. RBAC" note (Phase 9).
  *
  * Scope, deliberately narrow (not a generic "check ownership of any
- * entity" service): only the `User → Vendor → Shop` chain that
- * docs/database/vendor-shop.md §19–20 explicitly documents an ownership
- * rule for. Every other entity in the schema that has a `vendorId` (or a
- * `userId`) column — Product, VendorOrder, Wallet, Cart, MasterOrder,
- * Review, Notification, ... — has no application-layer controller yet in
- * this codebase, so there is no real route to protect and therefore
- * nothing concrete to test an ownership check against. Adding those
- * checks now would be speculative rather than grounded in an actual
- * protected endpoint, which this phase's task explicitly warns against
- * ("do not implement ownership checks for entities where the source
- * documents do not establish an ownership rule" combined with "do not
- * expand the business domain"). The intended pattern — resolve the
+ * entity" service): only the `User → Vendor → {Shop, Product}` chains
+ * that have both (a) an explicitly documented ownership rule and (b) a
+ * real application-layer controller. `Shop` was added in Phase 9;
+ * `Product` was added in Phase 11 (docs/database/catalog.md §8: "A
+ * vendor must only be able to access and modify their own products").
+ * Every other entity in the schema that has a `vendorId` (or a `userId`)
+ * column — VendorOrder, Wallet, Cart, MasterOrder, Review, Notification,
+ * ... — has no application-layer controller yet in this codebase, so
+ * there is no real route to protect and therefore nothing concrete to
+ * test an ownership check against. The intended pattern — resolve the
  * trusted owner id from the authenticated user, then check it against the
  * resource server-side — extends directly to those entities once they
- * get real endpoints; see this phase's final report.
+ * get real endpoints.
  */
 @Injectable()
 export class OwnershipService {
@@ -56,6 +54,24 @@ export class OwnershipService {
   async isShopOwnedByVendor(shopId: string, vendorId: string): Promise<boolean> {
     const count = await this.prisma.shop.count({
       where: { id: shopId, vendorId },
+    });
+
+    return count > 0;
+  }
+
+  /**
+   * Whether the given product is owned by the given vendor
+   * (docs/database/catalog.md §8: `Authenticated User → Vendor →
+   * Product`). Same fail-closed shape as `isShopOwnedByVendor` — a
+   * nonexistent product id matches zero rows, indistinguishable from
+   * "not owned."
+   */
+  async isProductOwnedByVendor(
+    productId: string,
+    vendorId: string,
+  ): Promise<boolean> {
+    const count = await this.prisma.product.count({
+      where: { id: productId, vendorId },
     });
 
     return count > 0;

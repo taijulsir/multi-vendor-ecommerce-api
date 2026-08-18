@@ -1776,18 +1776,26 @@ Inventory reservation model       APPROVED
 Concurrency requirements          APPROVED
 Vendor isolation                  APPROVED
 
-Prisma models                     NOT IMPLEMENTED
-Database migration                 NOT CREATED
-API implementation                 NOT IMPLEMENTED
+Prisma models                     IMPLEMENTED
+Database migration                 CREATED
+API implementation                 PARTIALLY IMPLEMENTED (Phase 11)
 Redis integration                  NOT IMPLEMENTED
 BullMQ integration                 NOT IMPLEMENTED
-Tests                              NOT IMPLEMENTED
+Tests                              IMPLEMENTED (Phase 11, for what exists)
 ```
 
-> This document defines the initial Catalog architecture. Prisma models,
-> migrations, services, APIs, Redis workflows, BullMQ jobs, and tests will
-> be implemented later after the complete database architecture has been
-> finalized.
+> Phase 11 implemented Category management (`GET /api/categories`,
+> `GET /api/categories/:categoryId` — public; `POST /api/categories`,
+> `PATCH /api/categories/:categoryId` — ADMIN-only) and Product
+> creation/retrieval/update (`POST /api/products`,
+> `GET /api/products/slug/:slug` — public,
+> `GET /api/products/:productId`, `PATCH /api/products/:productId` —
+> vendor-owned, ownership-enforced) exactly as specified above.
+> `ProductVariant`, `ProductImage`, `Inventory`, and
+> `InventoryTransaction` — including SKU, pricing, and stock tracking —
+> remain entirely unimplemented at the application layer; only their
+> Prisma models exist. Redis/BullMQ integration for inventory
+> reservation/expiry is not implemented.
 
 This document represents the approved Catalog architecture for the
 initial production-grade multi-vendor e-commerce implementation.

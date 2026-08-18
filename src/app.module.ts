@@ -8,6 +8,7 @@ import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
 import { VendorsModule } from './vendors/vendors.module';
 import { ShopsModule } from './shops/shops.module';
+import { CatalogModule } from './catalog/catalog.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { ShopsModule } from './shops/shops.module';
     AuthModule,
     VendorsModule,
     ShopsModule,
+    CatalogModule,
   ],
 
 })

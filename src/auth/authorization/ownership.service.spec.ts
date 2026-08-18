@@ -10,6 +10,9 @@ describe('OwnershipService', () => {
     shop: {
       count: jest.fn(),
     },
+    product: {
+      count: jest.fn(),
+    },
   };
 
   beforeEach(() => {
@@ -92,6 +95,45 @@ describe('OwnershipService', () => {
 
       await expect(
         service.isShopOwnedByVendor('shop-uuid', 'vendor-uuid'),
+      ).rejects.toThrow('connection terminated unexpectedly');
+    });
+  });
+
+  describe('isProductOwnedByVendor', () => {
+    it('returns true when the product belongs to the vendor', async () => {
+      prisma.product.count.mockResolvedValue(1);
+
+      await expect(
+        service.isProductOwnedByVendor('product-uuid', 'vendor-uuid'),
+      ).resolves.toBe(true);
+      expect(prisma.product.count).toHaveBeenCalledWith({
+        where: { id: 'product-uuid', vendorId: 'vendor-uuid' },
+      });
+    });
+
+    it('returns false when the product belongs to a different vendor', async () => {
+      prisma.product.count.mockResolvedValue(0);
+
+      await expect(
+        service.isProductOwnedByVendor('product-uuid', 'vendor-uuid'),
+      ).resolves.toBe(false);
+    });
+
+    it('returns false (fails closed) for an unknown product id, without throwing', async () => {
+      prisma.product.count.mockResolvedValue(0);
+
+      await expect(
+        service.isProductOwnedByVendor('unknown-product-uuid', 'vendor-uuid'),
+      ).resolves.toBe(false);
+    });
+
+    it('propagates database errors', async () => {
+      prisma.product.count.mockRejectedValue(
+        new Error('connection terminated unexpectedly'),
+      );
+
+      await expect(
+        service.isProductOwnedByVendor('product-uuid', 'vendor-uuid'),
       ).rejects.toThrow('connection terminated unexpectedly');
     });
   });

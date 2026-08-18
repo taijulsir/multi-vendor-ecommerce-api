@@ -1003,28 +1003,47 @@ access"). This is the only role granted this bypass; no other role
 bypasses ownership. The check reuses `AuthorizationService.hasRole`
 (Phase 8) rather than a second role-resolution implementation.
 
-## Ownership Scope (implemented, Phase 9; wired to real endpoints, Phase 10)
+## Ownership Scope (implemented, Phase 9; extended, Phases 10–11)
 
-Concretely implemented so far: `User → Vendor → Shop`, the one ownership
-chain both explicitly documented
-(`docs/database/vendor-shop.md` §19–20) and backed by an existing Prisma
-model. `VendorShopOwnershipGuard` now protects real application
-endpoints — `GET /api/shops/:shopId` and `PATCH /api/shops/:shopId`
-(`src/shops/`) — added in Phase 10, which also added vendor onboarding
-(`POST /api/vendors`, `GET /api/vendors/me`, `src/vendors/`) and shop
-creation (`POST /api/shops`, ownership resolved server-side via
-`OwnershipService` since there is no existing shop to check ownership of
-at creation time) and public storefront lookup
-(`GET /api/shops/slug/:slug`, unauthenticated, no ownership check by
-design). The Phase 9 temporary
-`GET /api/auth/ownership-demo/shop/:shopId` route has been removed now
-that real routes provide equivalent coverage. Other vendor-owned entities
-the schema already models (`Product`, `VendorOrder`, `Wallet`,
-`Commission`, `PromotionVendor`, all carrying a `vendorId`) are
+Concretely implemented so far: `User → Vendor → Shop`
+(`docs/database/vendor-shop.md` §19–20, Phase 9/10) and
+`User → Vendor → Product` (`docs/database/catalog.md` §8, Phase 11).
+`VendorShopOwnershipGuard` protects `GET`/`PATCH /api/shops/:shopId`
+(`src/shops/`). `ProductOwnershipGuard` protects
+`GET`/`PATCH /api/products/:productId` (`src/catalog/products/`).
+
+**Architectural decision (Phase 11):** Product's ownership shape is
+identical to Shop's (`User → Vendor → <resource>`, a direct `vendorId`
+column, same ADMIN bypass), but `VendorShopOwnershipGuard` was **not**
+generalized into a parameterized/generic ownership guard for this.
+`ProductOwnershipGuard` is a small, separate guard mirroring the same
+structure with its own `:productId` param. What *is* shared, not
+duplicated: `OwnershipService.getVendorIdForUser` and the ADMIN-bypass
+call to `AuthorizationService.hasRole` — only the entity-specific
+ownership query (`isShopOwnedByVendor` / `isProductOwnedByVendor`, both
+on `OwnershipService`) and each guard's thin route-param wiring differ.
+A generic `OwnershipGuard<T>` was deliberately not introduced for two
+concrete cases; that decision should be revisited only when a third
+entity needs this exact shape.
+
+Product creation resolves the caller's vendor id via `OwnershipService`
+(no existing product to check ownership of yet), same pattern as Shop
+creation. `GET /api/products/slug/:slug` is public/unauthenticated, same
+pattern as `GET /api/shops/slug/:slug`.
+
+Other vendor-owned entities the schema already models (`VendorOrder`,
+`Wallet`, `Commission`, `PromotionVendor`, all carrying a `vendorId`) are
 architecturally covered by the same rule and the same intended pattern
-(resolve the trusted vendor id, then check it against the resource) but
-have no controllers yet — ownership checks for them will be added
+but have no controllers yet — ownership checks for them will be added
 alongside those controllers, not speculatively ahead of them.
+
+`Category` (Phase 11, `docs/database/catalog.md` §2) is explicitly
+**not** vendor-owned — it has no `vendorId`/`userId` column at all, and
+is a shared, platform-wide taxonomy. Its mutating endpoints
+(`POST`/`PATCH /api/categories`) are gated by RBAC (`@Roles('ADMIN')`)
+rather than by `OwnershipService` — there is no owner to check ownership
+against. This is an inference, not an explicit doc statement; see this
+phase's final report.
 
 ---
 
@@ -1046,11 +1065,11 @@ A vendor must only access resources that belong to that vendor unless an explici
 
 Admin-level access may bypass normal vendor ownership restrictions where permitted by the authorization model.
 
-Implemented for `Shop` in Phase 9 (`VendorShopOwnershipGuard` +
-`OwnershipService`) and wired to real endpoints in Phase 10
-(`src/vendors/`, `src/shops/`) — see §23's "RBAC vs. Ownership" / "Admin
-Bypass" / "Ownership Scope" subsections for the concrete rule and current
-coverage.
+Implemented for `Shop` in Phase 9/10 (`VendorShopOwnershipGuard` +
+`OwnershipService`, `src/shops/`) and for `Product` in Phase 11
+(`ProductOwnershipGuard` + `OwnershipService`, `src/catalog/products/`)
+— see §23's "RBAC vs. Ownership" / "Admin Bypass" / "Ownership Scope"
+subsections for the concrete rule and current coverage.
 
 ---
 
