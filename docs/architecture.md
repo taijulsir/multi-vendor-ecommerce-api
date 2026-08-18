@@ -1003,36 +1003,56 @@ access"). This is the only role granted this bypass; no other role
 bypasses ownership. The check reuses `AuthorizationService.hasRole`
 (Phase 8) rather than a second role-resolution implementation.
 
-## Ownership Scope (implemented, Phase 9; extended, Phases 10–11)
+## Ownership Scope (implemented, Phase 9; extended, Phases 10–11, 14)
 
 Concretely implemented so far: `User → Vendor → Shop`
-(`docs/database/vendor-shop.md` §19–20, Phase 9/10) and
-`User → Vendor → Product` (`docs/database/catalog.md` §8, Phase 11).
+(`docs/database/vendor-shop.md` §19–20, Phase 9/10),
+`User → Vendor → Product` (`docs/database/catalog.md` §8, Phase 11), and
+`User → Vendor → VendorOrder` (`docs/database/order.md` §11, Phase 14).
 `VendorShopOwnershipGuard` protects `GET`/`PATCH /api/shops/:shopId`
 (`src/shops/`). `ProductOwnershipGuard` protects
 `GET`/`PATCH /api/products/:productId` (`src/catalog/products/`).
+`VendorOrderOwnershipGuard` protects `GET /api/vendor-orders/:vendorOrderId`
+(`src/orders/`).
 
-**Architectural decision (Phase 11):** Product's ownership shape is
-identical to Shop's (`User → Vendor → <resource>`, a direct `vendorId`
-column, same ADMIN bypass), but `VendorShopOwnershipGuard` was **not**
-generalized into a parameterized/generic ownership guard for this.
-`ProductOwnershipGuard` is a small, separate guard mirroring the same
-structure with its own `:productId` param. What *is* shared, not
-duplicated: `OwnershipService.getVendorIdForUser` and the ADMIN-bypass
-call to `AuthorizationService.hasRole` — only the entity-specific
-ownership query (`isShopOwnedByVendor` / `isProductOwnedByVendor`, both
-on `OwnershipService`) and each guard's thin route-param wiring differ.
-A generic `OwnershipGuard<T>` was deliberately not introduced for two
-concrete cases; that decision should be revisited only when a third
-entity needs this exact shape.
+**Architectural decision (Phase 11, revisited Phase 14):** Product's
+ownership shape is identical to Shop's (`User → Vendor → <resource>`, a
+direct `vendorId` column, same ADMIN bypass), but `VendorShopOwnershipGuard`
+was **not** generalized into a parameterized/generic ownership guard for
+this — `ProductOwnershipGuard` mirrors the same structure with its own
+`:productId` param instead, and that doc-comment explicitly named "a
+third entity needing this exact shape" as the point where extraction
+would become justified by real reuse. `VendorOrder` (Phase 14) is that
+third entity, and `VendorOrderOwnershipGuard` is a third mirrored guard
+— **the extraction was still not done**: this task's rules forbid
+rewriting already-tested Phase 9/11 functionality, and retrofitting a
+shared base onto two stable, working guards is exactly that kind of
+rewrite, not new "order viewing" work. This is flagged as a legitimate
+candidate for a dedicated future refactor rather than silently deferred
+again. What *is* shared across all three guards, not duplicated:
+`OwnershipService.getVendorIdForUser` and the ADMIN-bypass call to
+`AuthorizationService.hasRole` — only the entity-specific ownership
+query (`isShopOwnedByVendor` / `isProductOwnedByVendor` /
+`isVendorOrderOwnedByVendor`, all on `OwnershipService`) and each
+guard's thin route-param wiring differ.
 
 Product creation resolves the caller's vendor id via `OwnershipService`
 (no existing product to check ownership of yet), same pattern as Shop
 creation. `GET /api/products/slug/:slug` is public/unauthenticated, same
-pattern as `GET /api/shops/slug/:slug`.
+pattern as `GET /api/shops/slug/:slug`. `GET /api/vendor-orders` (the
+list endpoint, Phase 14) resolves the caller's vendor id the same way —
+there is no existing single resource to check ownership of for a list,
+so `VendorOrderOwnershipGuard` only protects the single-resource route.
 
-Other vendor-owned entities the schema already models (`VendorOrder`,
-`Wallet`, `Commission`, `PromotionVendor`, all carrying a `vendorId`) are
+`MasterOrder` (Phase 14) is user-owned, not vendor-owned — a direct
+`User → MasterOrder` relationship, the same shape as `Cart` (Phase 12).
+`OrdersService` therefore does **not** use `OwnershipService` or a
+guard for it; it scopes queries directly to the authenticated `userId`,
+with the ADMIN bypass applied by hand via `AuthorizationService.hasRole`
+(`docs/database/order.md` §48: "Admins may have broader access").
+
+Other vendor-owned entities the schema already models (`Wallet`,
+`Commission`, `PromotionVendor`, all carrying a `vendorId`) are
 architecturally covered by the same rule and the same intended pattern
 but have no controllers yet — ownership checks for them will be added
 alongside those controllers, not speculatively ahead of them.

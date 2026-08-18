@@ -13,6 +13,9 @@ describe('OwnershipService', () => {
     product: {
       count: jest.fn(),
     },
+    vendorOrder: {
+      count: jest.fn(),
+    },
   };
 
   beforeEach(() => {
@@ -134,6 +137,45 @@ describe('OwnershipService', () => {
 
       await expect(
         service.isProductOwnedByVendor('product-uuid', 'vendor-uuid'),
+      ).rejects.toThrow('connection terminated unexpectedly');
+    });
+  });
+
+  describe('isVendorOrderOwnedByVendor', () => {
+    it('returns true when the VendorOrder belongs to the vendor', async () => {
+      prisma.vendorOrder.count.mockResolvedValue(1);
+
+      await expect(
+        service.isVendorOrderOwnedByVendor('vendor-order-uuid', 'vendor-uuid'),
+      ).resolves.toBe(true);
+      expect(prisma.vendorOrder.count).toHaveBeenCalledWith({
+        where: { id: 'vendor-order-uuid', vendorId: 'vendor-uuid' },
+      });
+    });
+
+    it('returns false when the VendorOrder belongs to a different vendor', async () => {
+      prisma.vendorOrder.count.mockResolvedValue(0);
+
+      await expect(
+        service.isVendorOrderOwnedByVendor('vendor-order-uuid', 'vendor-uuid'),
+      ).resolves.toBe(false);
+    });
+
+    it('returns false (fails closed) for an unknown VendorOrder id, without throwing', async () => {
+      prisma.vendorOrder.count.mockResolvedValue(0);
+
+      await expect(
+        service.isVendorOrderOwnedByVendor('unknown-uuid', 'vendor-uuid'),
+      ).resolves.toBe(false);
+    });
+
+    it('propagates database errors', async () => {
+      prisma.vendorOrder.count.mockRejectedValue(
+        new Error('connection terminated unexpectedly'),
+      );
+
+      await expect(
+        service.isVendorOrderOwnedByVendor('vendor-order-uuid', 'vendor-uuid'),
       ).rejects.toThrow('connection terminated unexpectedly');
     });
   });

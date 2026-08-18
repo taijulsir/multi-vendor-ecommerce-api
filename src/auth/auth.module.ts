@@ -11,6 +11,7 @@ import { AuthorizationService } from './authorization/authorization.service';
 import { OwnershipService } from './authorization/ownership.service';
 import { AuthorizationGuard } from './guards/authorization.guard';
 import { ProductOwnershipGuard } from './guards/product-ownership.guard';
+import { VendorOrderOwnershipGuard } from './guards/vendor-order-ownership.guard';
 import { VendorShopOwnershipGuard } from './guards/vendor-shop-ownership.guard';
 import { PasswordService } from './password/password.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
@@ -45,6 +46,7 @@ import { RefreshTokenService } from './token/refresh-token.service';
     OwnershipService,
     VendorShopOwnershipGuard,
     ProductOwnershipGuard,
+    VendorOrderOwnershipGuard,
   ],
   exports: [
     AuthService,
@@ -55,6 +57,7 @@ import { RefreshTokenService } from './token/refresh-token.service';
     OwnershipService,
     VendorShopOwnershipGuard,
     ProductOwnershipGuard,
+    VendorOrderOwnershipGuard,
   ],
 })
 export class AuthModule {}

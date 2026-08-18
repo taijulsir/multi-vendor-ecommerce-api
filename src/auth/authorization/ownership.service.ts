@@ -11,16 +11,21 @@ import { PrismaService } from '../../prisma/prisma.service';
  * "Ownership vs. RBAC" note (Phase 9).
  *
  * Scope, deliberately narrow (not a generic "check ownership of any
- * entity" service): only the `User → Vendor → {Shop, Product}` chains
- * that have both (a) an explicitly documented ownership rule and (b) a
- * real application-layer controller. `Shop` was added in Phase 9;
- * `Product` was added in Phase 11 (docs/database/catalog.md §8: "A
- * vendor must only be able to access and modify their own products").
- * Every other entity in the schema that has a `vendorId` (or a `userId`)
- * column — VendorOrder, Wallet, Cart, MasterOrder, Review, Notification,
- * ... — has no application-layer controller yet in this codebase, so
- * there is no real route to protect and therefore nothing concrete to
- * test an ownership check against. The intended pattern — resolve the
+ * entity" service): only the `User → Vendor → {Shop, Product,
+ * VendorOrder}` chains that have both (a) an explicitly documented
+ * ownership rule and (b) a real application-layer controller. `Shop` was
+ * added in Phase 9; `Product` in Phase 11
+ * (docs/database/catalog.md §8); `VendorOrder` in Phase 14
+ * (docs/database/order.md §11: "A vendor must only be able to access
+ * VendorOrders belonging to that vendor... never access another vendor's
+ * VendorOrder by guessing or submitting its ID"). Every other entity in
+ * the schema that has a `vendorId` (or a `userId`) column — Wallet, Cart,
+ * MasterOrder, Review, Notification, ... — has no application-layer
+ * controller yet in this codebase, so there is no real route to protect
+ * and therefore nothing concrete to test an ownership check against
+ * (Cart and MasterOrder are user-owned, not vendor-owned, and
+ * deliberately do *not* use this service — see CartService's and
+ * OrdersService's doc-comments). The intended pattern — resolve the
  * trusted owner id from the authenticated user, then check it against the
  * resource server-side — extends directly to those entities once they
  * get real endpoints.
@@ -72,6 +77,22 @@ export class OwnershipService {
   ): Promise<boolean> {
     const count = await this.prisma.product.count({
       where: { id: productId, vendorId },
+    });
+
+    return count > 0;
+  }
+
+  /**
+   * Whether the given VendorOrder is owned by the given vendor
+   * (docs/database/order.md §11). Same fail-closed shape as the other
+   * `isXOwnedByVendor` methods.
+   */
+  async isVendorOrderOwnedByVendor(
+    vendorOrderId: string,
+    vendorId: string,
+  ): Promise<boolean> {
+    const count = await this.prisma.vendorOrder.count({
+      where: { id: vendorOrderId, vendorId },
     });
 
     return count > 0;

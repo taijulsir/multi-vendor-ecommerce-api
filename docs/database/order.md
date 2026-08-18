@@ -1611,12 +1611,12 @@ Concurrency requirements              APPROVED
 
 Prisma models                         IMPLEMENTED
 Database migration                    CREATED
-API implementation                    PARTIALLY IMPLEMENTED (Phase 13 — checkout only)
+API implementation                    PARTIALLY IMPLEMENTED (Phase 13 checkout + Phase 14 viewing)
 Payment integration                   NOT IMPLEMENTED
 Refund integration                    NOT IMPLEMENTED
 Redis integration                     NOT IMPLEMENTED
 BullMQ integration                    NOT IMPLEMENTED
-Tests                                 IMPLEMENTED (Phase 13, for checkout)
+Tests                                 IMPLEMENTED (Phases 13–14)
 ```
 
 > Phase 13 implemented `POST /api/checkout` — Cart → MasterOrder +
@@ -1649,6 +1649,23 @@ Tests                                 IMPLEMENTED (Phase 13, for checkout)
 > create a second order; no separate idempotency-key table/header exists
 > (none is implemented in this codebase, and the source documents
 > themselves say the exact storage model is still "to be finalized").
+
+> Phase 14 implemented order *viewing* — §48's "Customers may view their
+> own MasterOrders... Vendors may view VendorOrders belonging to
+> themselves... Admins may have broader access": `GET /api/orders`,
+> `GET /api/orders/:masterOrderId` (customer, own MasterOrders + nested
+> VendorOrders/OrderItems, ADMIN bypass), `GET /api/vendor-orders`,
+> `GET /api/vendor-orders/:vendorOrderId` (vendor, own VendorOrders,
+> ADMIN bypass via a new `VendorOrderOwnershipGuard` mirroring the
+> existing Shop/Product ownership guards). The vendor-facing view
+> includes `commissionAmount`/`vendorNetAmount` (their own financial
+> data, currently always 0 — no commission is calculated anywhere yet);
+> the customer-facing view excludes both fields, matching this
+> codebase's existing response-shaping convention. Still unimplemented:
+> fulfillment status transitions/updates (§49's transition matrix is
+> explicitly not finalized in this document), cancellation, and any
+> admin "view all orders" listing beyond the single-resource ADMIN
+> bypass.
 
 The Order domain is the authoritative representation of completed
 purchases and must preserve sufficient historical information to remain

@@ -62,7 +62,7 @@ export interface MasterOrderView {
   vendorOrders: VendorOrderView[];
 }
 
-function toOrderItemView(item: OrderItem): OrderItemView {
+export function toOrderItemView(item: OrderItem): OrderItemView {
   return {
     id: item.id,
     productId: item.productId,
@@ -94,6 +94,32 @@ function toVendorOrderView(
     taxAmount: vendorOrder.taxAmount.toFixed(2),
     totalAmount: vendorOrder.totalAmount.toFixed(2),
     items: vendorOrder.items.map(toOrderItemView),
+  };
+}
+
+/**
+ * The vendor's own view of one of their VendorOrders (Phase 14) —
+ * unlike `VendorOrderView` (embedded in the customer-facing
+ * `MasterOrderView`), this one *does* include `commissionAmount` and
+ * `vendorNetAmount`: it is the vendor's own financial data, not a third
+ * party's. Also includes `masterOrderId` since a vendor viewing their
+ * own order in isolation (not nested under a MasterOrder response)
+ * needs a way to reference the parent checkout it belongs to.
+ */
+export interface VendorOrderDetailView extends VendorOrderView {
+  masterOrderId: string;
+  commissionAmount: string;
+  vendorNetAmount: string;
+}
+
+export function toVendorOrderDetailView(
+  vendorOrder: VendorOrder & { items: OrderItem[] },
+): VendorOrderDetailView {
+  return {
+    ...toVendorOrderView(vendorOrder),
+    masterOrderId: vendorOrder.masterOrderId,
+    commissionAmount: vendorOrder.commissionAmount.toFixed(2),
+    vendorNetAmount: vendorOrder.vendorNetAmount.toFixed(2),
   };
 }
 
