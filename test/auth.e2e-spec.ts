@@ -449,6 +449,175 @@ describe('Auth API (e2e)', () => {
     });
   });
 
+  describe('POST /api/auth/logout', () => {
+    const password = 'StrongPassw0rd!';
+
+    const registerAndLogin = async () => {
+      const email = uniqueEmail();
+      registeredEmails.push(email);
+
+      await request(app.getHttpServer())
+        .post('/api/auth/register')
+        .send({ email, password, firstName: 'Jane' })
+        .expect(201);
+
+      const loginResponse = await request(app.getHttpServer())
+        .post('/api/auth/login')
+        .send({ email, password })
+        .expect(200);
+
+      return {
+        email,
+        id: loginResponse.body.id as string,
+        accessToken: loginResponse.body.accessToken as string,
+        refreshToken: loginResponse.body.refreshToken as string,
+      };
+    };
+
+    const doRefresh = (refreshToken: string) =>
+      request(app.getHttpServer())
+        .post('/api/auth/refresh')
+        .send({ refreshToken });
+
+    const doLogout = (accessToken: string, refreshToken: string) =>
+      request(app.getHttpServer())
+        .post('/api/auth/logout')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ refreshToken });
+
+    it('revokes the session: refresh with the logged-out token afterward returns 401', async () => {
+      const { accessToken, refreshToken } = await registerAndLogin();
+
+      const response = await doLogout(accessToken, refreshToken);
+      expect(response.status).toBe(204);
+      expect(response.body).toEqual({});
+
+      await doRefresh(refreshToken).expect(401);
+    });
+
+    it('does not blacklist the access token: GET /api/auth/me still works with it after logout', async () => {
+      // Explicitly proves this phase does NOT implement access-token
+      // revocation, per task §4 — logout only affects the refresh-token
+      // session.
+      const { accessToken, refreshToken } = await registerAndLogin();
+
+      await doLogout(accessToken, refreshToken).expect(204);
+
+      await request(app.getHttpServer())
+        .get('/api/auth/me')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+    });
+
+    it('revokes the entire family: logging out after A→B→C rotation invalidates C (and the whole chain)', async () => {
+      const { accessToken, refreshToken: tokenA } = await registerAndLogin();
+
+      const responseB = await doRefresh(tokenA).expect(200);
+      const tokenB = responseB.body.refreshToken as string;
+
+      const responseC = await doRefresh(tokenB).expect(200);
+      const tokenC = responseC.body.refreshToken as string;
+
+      await doLogout(accessToken, tokenC).expect(204);
+
+      await doRefresh(tokenC).expect(401);
+      // The already-superseded earlier tokens in the chain were already
+      // unusable from rotation itself (Phase 6 behavior) — reused here
+      // only to confirm logout didn't somehow resurrect them.
+      await doRefresh(tokenA).expect(401);
+      await doRefresh(tokenB).expect(401);
+    });
+
+    it("isolates sessions for the SAME user: logging out session F1 (one device) does not affect independent session F2 (another device)", async () => {
+      const email = uniqueEmail();
+      registeredEmails.push(email);
+
+      await request(app.getHttpServer())
+        .post('/api/auth/register')
+        .send({ email, password, firstName: 'Jane' })
+        .expect(201);
+
+      // Two independent logins for the SAME account -> two independent
+      // families (e.g. "phone" and "laptop"), matching Phase 6's own
+      // "User has: Family F1 ... Family F2" example.
+      const loginF1 = await request(app.getHttpServer())
+        .post('/api/auth/login')
+        .send({ email, password })
+        .expect(200);
+      const loginF2 = await request(app.getHttpServer())
+        .post('/api/auth/login')
+        .send({ email, password })
+        .expect(200);
+
+      await doLogout(
+        loginF1.body.accessToken as string,
+        loginF1.body.refreshToken as string,
+      ).expect(204);
+
+      await doRefresh(loginF1.body.refreshToken as string).expect(401);
+      await doRefresh(loginF2.body.refreshToken as string).expect(200);
+    });
+
+    it('isolates sessions across different users: logging out one user does not affect another', async () => {
+      const session1 = await registerAndLogin();
+      const session2 = await registerAndLogin();
+
+      await doLogout(session1.accessToken, session1.refreshToken).expect(
+        204,
+      );
+
+      await doRefresh(session1.refreshToken).expect(401);
+      await doRefresh(session2.refreshToken).expect(200);
+    });
+
+    it('is idempotent: calling logout twice with the same token behaves consistently with no server error', async () => {
+      const { accessToken, refreshToken } = await registerAndLogin();
+
+      await doLogout(accessToken, refreshToken).expect(204);
+      // Second call: same (already-revoked) refresh token, same still-
+      // valid access token. Must not 500 — logout succeeds either way.
+      await doLogout(accessToken, refreshToken).expect(204);
+
+      await doRefresh(refreshToken).expect(401);
+    });
+
+    it('does not revoke another session merely because an unrelated/unknown refresh token is presented', async () => {
+      const { accessToken } = await registerAndLogin();
+      const otherSession = await registerAndLogin();
+
+      // A syntactically-valid-looking but unrecognized token in the body
+      // must not error, and must not affect any real session.
+      await doLogout(accessToken, randomUUID()).expect(204);
+
+      await doRefresh(otherSession.refreshToken).expect(200);
+    });
+
+    it('rejects malformed/empty input with 400', async () => {
+      const { accessToken } = await registerAndLogin();
+
+      await request(app.getHttpServer())
+        .post('/api/auth/logout')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({})
+        .expect(400);
+    });
+
+    it('rejects a request with no Authorization header with 401', async () => {
+      await request(app.getHttpServer())
+        .post('/api/auth/logout')
+        .send({ refreshToken: randomUUID() })
+        .expect(401);
+    });
+
+    it('rejects a request with an invalid access token with 401', async () => {
+      await request(app.getHttpServer())
+        .post('/api/auth/logout')
+        .set('Authorization', 'Bearer not-a-jwt-token')
+        .send({ refreshToken: randomUUID() })
+        .expect(401);
+    });
+  });
+
   describe('GET /api/auth/me', () => {
     const password = 'StrongPassw0rd!';
 

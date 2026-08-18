@@ -12,6 +12,7 @@ import {
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
+  ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -102,6 +103,33 @@ export class AuthController {
   })
   refresh(@Body() dto: RefreshTokenDto) {
     return this.authService.refresh(dto);
+  }
+
+  @Post('logout')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Revoke the current login session (refresh-token family)',
+  })
+  @ApiNoContentResponse({
+    description:
+      'The session has been revoked (or was already invalid/not yours, ' +
+      'in which case this is a no-op) — this endpoint is idempotent and ' +
+      'always returns 204 for an authenticated caller. Other sessions ' +
+      '(other refresh-token families, including other devices for the ' +
+      'same user) are unaffected. The current access token remains ' +
+      'valid until it naturally expires (see JWT_ACCESS_EXPIRES_IN) — ' +
+      'this phase does not implement access-token revocation.',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Missing, malformed, invalid, or expired access token.',
+  })
+  async logout(
+    @CurrentUser() user: SafeUser,
+    @Body() dto: RefreshTokenDto,
+  ): Promise<void> {
+    await this.authService.logout(user.id, dto);
   }
 
   @Get('me')

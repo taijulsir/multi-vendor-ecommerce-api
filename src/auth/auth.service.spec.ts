@@ -643,4 +643,118 @@ describe('AuthService', () => {
       });
     });
   });
+
+  describe('logout', () => {
+    const activeUser = { ...persistedUser, status: 'ACTIVE' };
+    const familyId = 'family-uuid';
+    const logoutDto: RefreshTokenDto = { refreshToken: 'raw-refresh-token' };
+
+    const ownedRecord = (overrides: Record<string, unknown> = {}) => ({
+      id: 'refresh-token-uuid',
+      userId: activeUser.id,
+      familyId,
+      tokenHash: 'hashed-refresh-token',
+      expiresAt: new Date(Date.now() + 60_000),
+      revokedAt: null,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+      ...overrides,
+    });
+
+    beforeEach(() => {
+      refreshTokenService.hash.mockReturnValue('hashed-refresh-token');
+    });
+
+    it("revokes every active token in the presented refresh token's family", async () => {
+      prisma.refreshToken.findUnique.mockResolvedValue(ownedRecord());
+      prisma.refreshToken.updateMany.mockResolvedValue({ count: 3 });
+
+      await service.logout(activeUser.id, logoutDto);
+
+      expect(refreshTokenService.hash).toHaveBeenCalledWith(
+        'raw-refresh-token',
+      );
+      expect(prisma.refreshToken.findUnique).toHaveBeenCalledWith({
+        where: { tokenHash: 'hashed-refresh-token' },
+      });
+      expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
+        where: { familyId, revokedAt: null },
+        data: { revokedAt: expect.any(Date) },
+      });
+    });
+
+    it("does not touch a different user's family, even for a syntactically valid, existing token", async () => {
+      prisma.refreshToken.findUnique.mockResolvedValue(
+        ownedRecord({ userId: 'someone-else-uuid' }),
+      );
+
+      await service.logout(activeUser.id, logoutDto);
+
+      expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('is a no-op (does not throw) for an unknown/malformed token', async () => {
+      prisma.refreshToken.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.logout(activeUser.id, logoutDto),
+      ).resolves.toBeUndefined();
+      expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('is idempotent: logging out an already-revoked session does not throw or attempt to re-revoke', async () => {
+      // The presented token itself is already revoked; findUnique still
+      // resolves it (the row is never deleted), but there is nothing
+      // further to revoke for this call to meaningfully do beyond
+      // confirming ownership.
+      prisma.refreshToken.findUnique.mockResolvedValue(
+        ownedRecord({ revokedAt: new Date('2026-01-01T00:05:00.000Z') }),
+      );
+      prisma.refreshToken.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.logout(activeUser.id, logoutDto),
+      ).resolves.toBeUndefined();
+
+      // Still safe/correct to issue the family-wide updateMany even when
+      // already fully revoked: the `revokedAt: null` filter means it
+      // simply matches zero rows — not an error, not a re-revocation.
+      expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
+        where: { familyId, revokedAt: null },
+        data: { revokedAt: expect.any(Date) },
+      });
+    });
+
+    it('propagates unexpected database failures instead of swallowing them', async () => {
+      prisma.refreshToken.findUnique.mockRejectedValue(
+        new Error('connection terminated unexpectedly'),
+      );
+
+      await expect(
+        service.logout(activeUser.id, logoutDto),
+      ).rejects.toThrow('connection terminated unexpectedly');
+    });
+
+    it('never logs or leaks the raw refresh token or its hash', async () => {
+      prisma.refreshToken.findUnique.mockResolvedValue(ownedRecord());
+      prisma.refreshToken.updateMany.mockResolvedValue({ count: 1 });
+
+      const logSpy = jest.spyOn(console, 'log').mockImplementation();
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation();
+
+      try {
+        const result = await service.logout(activeUser.id, logoutDto);
+
+        expect(result).toBeUndefined(); // nothing returned to leak, either
+        for (const call of [...logSpy.mock.calls, ...errorSpy.mock.calls]) {
+          const serialized = JSON.stringify(call);
+          expect(serialized).not.toContain('raw-refresh-token');
+          expect(serialized).not.toContain('hashed-refresh-token');
+        }
+      } finally {
+        logSpy.mockRestore();
+        errorSpy.mockRestore();
+      }
+    });
+  });
 });

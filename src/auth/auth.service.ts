@@ -279,6 +279,47 @@ export class AuthService {
   }
 
   /**
+   * Revokes the login session (refresh-token family) identified by the
+   * presented refresh token, for the currently authenticated user only.
+   *
+   * One `familyId` == one login session (see Phase 6's design — a family
+   * is the chain of tokens produced by rotating from a single login), so
+   * "logout this session" means "revoke every still-active token in this
+   * family," reusing the exact same family-revocation shape already
+   * established for reuse detection in `refresh()`. No new persistence
+   * model is required.
+   *
+   * Deliberately idempotent and always succeeds from the caller's
+   * perspective (task §7): an unknown token, an already-revoked token,
+   * and a token that exists but belongs to a *different* user are all
+   * silently no-ops. This is the same "never reveal internal token
+   * state" principle used everywhere else in this auth flow — a client
+   * cannot distinguish "already logged out" from "that token was never
+   * yours" from "that token never existed." Cross-user ownership is
+   * enforced here (a caller can only ever revoke their own session) even
+   * though `AuthController` also requires a valid access token — this is
+   * a deliberate second check, not redundant: the access token proves
+   * *who* is calling, but says nothing about which refresh token/session
+   * they're allowed to name in the request body.
+   */
+  async logout(userId: string, dto: RefreshTokenDto): Promise<void> {
+    const tokenHash = this.refreshTokenService.hash(dto.refreshToken);
+
+    const record = await this.prisma.refreshToken.findUnique({
+      where: { tokenHash },
+    });
+
+    if (!record || record.userId !== userId) {
+      return;
+    }
+
+    await this.prisma.refreshToken.updateMany({
+      where: { familyId: record.familyId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+  }
+
+  /**
    * Gate on docs/database/identity-access.md "User Status":
    *  - ACTIVE: explicitly documented as able to authenticate.
    *  - SUSPENDED / BLOCKED: the source documents describe these as

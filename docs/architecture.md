@@ -734,6 +734,19 @@ single generic 401 with no distinguishing detail. Sessions (families) are
 independent — revoking one never affects another, including other
 sessions for the same user.
 
+Logout policy (implemented): `POST /auth/logout` requires a valid access
+token (it is not a public endpoint) and revokes the login session — the
+entire refresh-token family — identified by the refresh token supplied in
+the request body, reusing the same family-revocation mechanism as reuse
+detection above. It only ever revokes a family owned by the authenticated
+caller; an unknown, already-revoked, or another user's refresh token is a
+silent no-op. Logout is therefore idempotent and always returns `204` for
+an authenticated caller, regardless of the refresh token's validity. The
+access token itself is not revoked or blacklisted — it remains valid,
+stateless, until it naturally expires (`JWT_ACCESS_EXPIRES_IN`); logout
+only guarantees the session cannot be *continued* past that point via
+`/auth/refresh`.
+
 The authentication system is centralized around the User entity.
 
 There is no separate authentication system for vendors.
