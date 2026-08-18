@@ -1202,7 +1202,7 @@ a narrower guarantee than full request-level idempotency — it does not,
 for example, deduplicate two genuinely separate checkout attempts built
 from two different carts with identical contents.
 
-## Webhook Idempotency (implemented, Phase 15)
+## Webhook Idempotency (implemented, Phase 15; hardened, Phase 16)
 
 `PaymentWebhookEvent`'s existing `UNIQUE(provider, eventId)` constraint
 *is* the idempotency mechanism — no separate idempotency-key table was
@@ -1214,6 +1214,18 @@ associated state change (Payment/Attempt/Refund/MasterOrder update) is
 never re-applied — the request still returns 200 with
 `{ status: 'duplicate' }`, since a non-2xx response would only cause a
 real gateway to keep retrying.
+
+**Second, independent idempotency layer (Phase 16):** the
+`(provider, eventId)` constraint alone only catches the exact same event
+delivered twice. `handlePaymentOutcome`/`handleRefundOutcome`
+additionally check the target `PaymentAttempt`/`Refund`'s own current
+status before applying any financial effect — an attempt/refund that is
+no longer `INITIATED`/`PENDING` is treated as already resolved (event
+marked `IGNORED`, `{ status: 'duplicate' }` returned) rather than
+reapplied. This closes the gap where a (non-conforming) provider reports
+the same underlying outcome under two different event ids — without it,
+`Payment.refundedAmount` in particular (an accumulation, not an
+absolute-set field) could be double-credited.
 
 **Payment ownership (Phase 15):** `Payment` is reached through
 `MasterOrder`, which is user-owned (the same pattern established for

@@ -1464,6 +1464,14 @@ Tests                                 IMPLEMENTED (Phase 15)
 > on payment/refund outcomes (§24) — `MasterOrder.status` (fulfillment
 > lifecycle) is never touched by this domain.
 >
+> **Phase 16 hardening**: webhook processing now also checks the target
+> `PaymentAttempt`/`Refund`'s own current status before applying a
+> financial effect, in addition to the `(provider, eventId)` uniqueness
+> check — see `docs/architecture.md`'s "Webhook Idempotency" section for
+> why (`refundedAmount` is an accumulation, not an absolute-set field,
+> so a second application under a different event id would otherwise
+> double-credit it).
+>
 > **Refund is ADMIN-only** in this phase — no customer-facing
 > refund-request/approval workflow is documented anywhere in this file;
 > only administrative actor/audit language (`ADMIN_ADJUSTMENT`,

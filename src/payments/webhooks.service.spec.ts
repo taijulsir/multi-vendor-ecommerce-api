@@ -89,6 +89,7 @@ describe('WebhooksService', () => {
       id: 'attempt-uuid',
       paymentId: 'payment-uuid',
       providerReference: 'ref_abc123',
+      status: 'INITIATED',
       payment: {
         amount: new Prisma.Decimal('5000.00'),
         masterOrderId: 'master-order-uuid',
@@ -157,6 +158,22 @@ describe('WebhooksService', () => {
       expect(result).toEqual({ status: 'unmatched' });
       expect(prisma.paymentAttempt.findFirst).not.toHaveBeenCalled();
     });
+
+    it('never re-applies the financial effect when the attempt was already resolved (idempotency by value, Phase 16)', async () => {
+      prisma.paymentAttempt.findFirst.mockResolvedValue({
+        ...attempt,
+        status: 'SUCCEEDED',
+      });
+
+      const result = await service.processEvent(baseDto);
+
+      expect(result).toEqual({ status: 'duplicate' });
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(prisma.paymentWebhookEvent.update).toHaveBeenCalledWith({
+        where: { id: 'webhook-event-uuid' },
+        data: expect.objectContaining({ status: 'IGNORED' }),
+      });
+    });
   });
 
   describe('payment.failed', () => {
@@ -165,6 +182,7 @@ describe('WebhooksService', () => {
         id: 'attempt-uuid',
         paymentId: 'payment-uuid',
         providerReference: 'ref_abc123',
+        status: 'INITIATED',
         payment: { amount: new Prisma.Decimal('5000.00'), masterOrderId: 'master-order-uuid' },
       });
 
@@ -195,6 +213,7 @@ describe('WebhooksService', () => {
       paymentId: 'payment-uuid',
       amount: new Prisma.Decimal('500.00'),
       providerReference: 'ref_abc123',
+      status: 'PENDING',
       payment: {
         paidAmount: new Prisma.Decimal('5000.00'),
         refundedAmount: new Prisma.Decimal('0'),
@@ -253,6 +272,25 @@ describe('WebhooksService', () => {
 
       expect(result).toEqual({ status: 'unmatched' });
     });
+
+    it('never re-increments refundedAmount when the refund was already resolved (idempotency by value, Phase 16)', async () => {
+      prisma.refund.findFirst.mockResolvedValue({
+        ...refund,
+        status: 'SUCCEEDED',
+      });
+
+      const result = await service.processEvent({
+        ...baseDto,
+        eventType: 'refund.succeeded',
+      });
+
+      expect(result).toEqual({ status: 'duplicate' });
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(prisma.paymentWebhookEvent.update).toHaveBeenCalledWith({
+        where: { id: 'webhook-event-uuid' },
+        data: expect.objectContaining({ status: 'IGNORED' }),
+      });
+    });
   });
 
   describe('refund.failed', () => {
@@ -262,6 +300,7 @@ describe('WebhooksService', () => {
         paymentId: 'payment-uuid',
         amount: new Prisma.Decimal('500.00'),
         providerReference: 'ref_abc123',
+        status: 'PENDING',
         payment: {
           paidAmount: new Prisma.Decimal('5000.00'),
           refundedAmount: new Prisma.Decimal('0'),

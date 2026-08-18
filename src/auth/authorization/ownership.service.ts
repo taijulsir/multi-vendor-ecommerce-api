@@ -40,10 +40,18 @@ export class OwnershipService {
    * docs/database/vendor-shop.md §1 — not every user is a vendor). Never
    * takes a vendor id as input: the vendor identity is always derived
    * from the trusted, JWT-authenticated user id, never from client input.
+   *
+   * Excludes soft-deleted Vendor rows (`deletedAt: null`), per
+   * `docs/plans/database-implementation-plan.md` §1.3's application-layer
+   * rule ("every read query on a soft-deletable model must filter
+   * `deletedAt: null`") — matching the filter every other Vendor-adjacent
+   * read in this codebase already applies. Currently dormant (no
+   * endpoint ever sets `Vendor.deletedAt`) but fixed here for
+   * consistency (Phase 16 audit).
    */
   async getVendorIdForUser(userId: string): Promise<string | null> {
     const vendor = await this.prisma.vendor.findUnique({
-      where: { userId },
+      where: { userId, deletedAt: null },
       select: { id: true },
     });
 

@@ -39,6 +39,17 @@ export type WebhookProcessingOutcome =
  * already received, and processing is skipped entirely (no state
  * changes are re-applied) — see docs/database/payment-refund.md §21.
  *
+ * **Second, independent idempotency layer (Phase 16 hardening):** the
+ * `(provider, eventId)` constraint only catches the *same* event
+ * delivered twice. `handlePaymentOutcome`/`handleRefundOutcome`
+ * additionally check the target `PaymentAttempt`/`Refund`'s own current
+ * status before applying any financial effect — an already-resolved
+ * attempt/refund is treated as a duplicate (event marked `IGNORED`,
+ * `{ status: 'duplicate' }` returned) rather than reapplied, so even a
+ * (non-conforming) provider that reports the same underlying outcome
+ * under two different event ids cannot double-credit `paidAmount` or
+ * `refundedAmount`.
+ *
  * **Recognized event types** (`payment.succeeded`, `payment.failed`,
  * `refund.succeeded`, `refund.failed`) are this foundation's own chosen
  * vocabulary, not a real gateway's — `eventType` is a free string in
@@ -133,6 +144,25 @@ export class WebhooksService {
       return this.markUnmatched(webhookEventId, 'No matching payment attempt');
     }
 
+    // Idempotency by *value*, not just by (provider, eventId): this
+    // attempt was already resolved by a prior event — possibly under a
+    // different eventId than this one, which the unique-constraint
+    // check alone cannot catch. Never re-apply the financial effect
+    // (docs/database/payment-refund.md §21: "the system must process
+    // the financial effect only once").
+    if (attempt.status !== 'INITIATED') {
+      await this.prisma.paymentWebhookEvent.update({
+        where: { id: webhookEventId },
+        data: {
+          status: 'IGNORED',
+          processedAt: new Date(),
+          errorMessage: 'Attempt already resolved; financial effect not reapplied',
+        },
+      });
+
+      return { status: 'duplicate' };
+    }
+
     await this.prisma.$transaction(async (tx) => {
       await tx.paymentAttempt.update({
         where: { id: attempt.id },
@@ -189,6 +219,24 @@ export class WebhooksService {
 
     if (!refund) {
       return this.markUnmatched(webhookEventId, 'No matching refund');
+    }
+
+    // Same idempotency-by-value guard as handlePaymentOutcome — never
+    // re-increment Payment.refundedAmount for a refund that was already
+    // resolved (that field is an accumulation, so re-applying it would
+    // silently double-credit the refund unlike the absolute-set fields
+    // in handlePaymentOutcome).
+    if (refund.status !== 'PENDING') {
+      await this.prisma.paymentWebhookEvent.update({
+        where: { id: webhookEventId },
+        data: {
+          status: 'IGNORED',
+          processedAt: new Date(),
+          errorMessage: 'Refund already resolved; financial effect not reapplied',
+        },
+      });
+
+      return { status: 'duplicate' };
     }
 
     await this.prisma.$transaction(async (tx) => {

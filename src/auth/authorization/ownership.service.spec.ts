@@ -31,7 +31,7 @@ describe('OwnershipService', () => {
         service.getVendorIdForUser('user-uuid'),
       ).resolves.toBe('vendor-uuid');
       expect(prisma.vendor.findUnique).toHaveBeenCalledWith({
-        where: { userId: 'user-uuid' },
+        where: { userId: 'user-uuid', deletedAt: null },
         select: { id: true },
       });
     });
