@@ -968,4 +968,185 @@ describe('Auth API (e2e)', () => {
         .expect(401);
     });
   });
+
+  describe('Ownership (Vendor → Shop) — Phase 9', () => {
+    const password = 'StrongPassw0rd!';
+
+    // Fixture state. No Vendor/Shop management API exists (none was
+    // built), so fixtures are created directly via Prisma, exactly as
+    // task §16/§11 (Phase 8's equivalent instruction) direct — and torn
+    // down in afterAll.
+    let shopAId: string;
+    let shopBId: string;
+    let vendorAVendorId: string;
+    let vendorBVendorId: string;
+    let vendorA: { id: string; email: string; accessToken: string };
+    let vendorB: { id: string; email: string; accessToken: string };
+    let nonVendorUser: { accessToken: string };
+    let adminUser: { accessToken: string };
+
+    const registerAndLogin = async (firstName: string) => {
+      const email = uniqueEmail();
+      registeredEmails.push(email);
+
+      await request(app.getHttpServer())
+        .post('/api/auth/register')
+        .send({ email, password, firstName })
+        .expect(201);
+
+      const login = await request(app.getHttpServer())
+        .post('/api/auth/login')
+        .send({ email, password })
+        .expect(200);
+
+      return {
+        id: login.body.id as string,
+        email,
+        accessToken: login.body.accessToken as string,
+      };
+    };
+
+    beforeAll(async () => {
+      const adminRole = await prisma.role.findUniqueOrThrow({
+        where: { name: 'ADMIN' },
+      });
+
+      const userA = await registerAndLogin('VendorA');
+      const vendorARecord = await prisma.vendor.create({
+        data: { userId: userA.id, businessName: 'Vendor A Business' },
+      });
+      const shopA = await prisma.shop.create({
+        data: {
+          vendorId: vendorARecord.id,
+          name: 'Shop A',
+          slug: `shop-a-${randomUUID()}`,
+        },
+      });
+      vendorA = userA;
+      vendorAVendorId = vendorARecord.id;
+      shopAId = shopA.id;
+
+      const userB = await registerAndLogin('VendorB');
+      const vendorBRecord = await prisma.vendor.create({
+        data: { userId: userB.id, businessName: 'Vendor B Business' },
+      });
+      const shopB = await prisma.shop.create({
+        data: {
+          vendorId: vendorBRecord.id,
+          name: 'Shop B',
+          slug: `shop-b-${randomUUID()}`,
+        },
+      });
+      vendorB = userB;
+      vendorBVendorId = vendorBRecord.id;
+      shopBId = shopB.id;
+
+      // Registered, authenticated, but never given a Vendor profile.
+      nonVendorUser = await registerAndLogin('NoVendorProfile');
+
+      const adminAccount = await registerAndLogin('Admin');
+      await prisma.userRole.create({
+        data: { userId: adminAccount.id, roleId: adminRole.id },
+      });
+      adminUser = adminAccount;
+    });
+
+    afterAll(async () => {
+      // Must run (and does, via Jest's inner-before-outer afterAll
+      // ordering) before the outer suite's afterAll deletes these Users —
+      // Vendor.userId is onDelete: Restrict, so a Vendor row referencing
+      // a User would otherwise block that user's deletion.
+      await prisma.shop.deleteMany({
+        where: { id: { in: [shopAId, shopBId] } },
+      });
+      await prisma.vendor.deleteMany({
+        where: { id: { in: [vendorAVendorId, vendorBVendorId] } },
+      });
+    });
+
+    const getShop = (accessToken: string, shopId: string, query = '') =>
+      request(app.getHttpServer())
+        .get(`/api/auth/ownership-demo/shop/${shopId}${query}`)
+        .set('Authorization', `Bearer ${accessToken}`);
+
+    it('allows the authenticated owner to access their own shop', async () => {
+      const response = await getShop(vendorA.accessToken, shopAId).expect(
+        200,
+      );
+
+      expect(response.body.shopId).toBe(shopAId);
+      expect(response.body.userId).toBe(vendorA.id);
+    });
+
+    it("forbids (403) vendor A from accessing vendor B's shop, and vice versa", async () => {
+      await getShop(vendorA.accessToken, shopBId).expect(403);
+      await getShop(vendorB.accessToken, shopAId).expect(403);
+    });
+
+    it('forbids (403) a user with no vendor profile at all from accessing any shop', async () => {
+      await getShop(nonVendorUser.accessToken, shopAId).expect(403);
+    });
+
+    it('forbids (403) an unknown/nonexistent shop id without revealing that distinction', async () => {
+      await getShop(vendorA.accessToken, randomUUID()).expect(403);
+    });
+
+    it('a client-supplied vendorId query parameter cannot be used to bypass ownership', async () => {
+      // Authenticated as Vendor B, but claiming Vendor A's vendor id via
+      // a spoofed query param, while requesting Vendor A's shop. The
+      // guard never reads this field — the trusted vendor identity comes
+      // solely from the authenticated access token — so this must still
+      // be forbidden exactly like any other cross-vendor attempt.
+      await getShop(
+        vendorB.accessToken,
+        shopAId,
+        `?vendorId=${vendorAVendorId}&userId=${vendorA.id}`,
+      ).expect(403);
+    });
+
+    it('allows an ADMIN to access any vendor\'s shop (documented bypass)', async () => {
+      await getShop(adminUser.accessToken, shopAId).expect(200);
+      await getShop(adminUser.accessToken, shopBId).expect(200);
+    });
+
+    it('rejects an unauthenticated request with 401 (not 403)', async () => {
+      await request(app.getHttpServer())
+        .get(`/api/auth/ownership-demo/shop/${shopAId}`)
+        .expect(401);
+    });
+
+    it('keeps RBAC denial and ownership denial architecturally separate', async () => {
+      // Vendor A has no RBAC role at all (not even CUSTOMER was assigned
+      // to this fixture) and is denied by AuthorizationGuard on an
+      // RBAC-gated route that has nothing to do with shop ownership...
+      await request(app.getHttpServer())
+        .get('/api/auth/rbac-demo/role')
+        .set('Authorization', `Bearer ${vendorA.accessToken}`)
+        .expect(403);
+
+      // ...yet is fully allowed on the ownership-gated route for their
+      // OWN shop, which carries no @Roles()/@Permissions() metadata at
+      // all — proving the ownership check does not depend on RBAC, and
+      // the RBAC check above did not depend on ownership.
+      await getShop(vendorA.accessToken, shopAId).expect(200);
+    });
+
+    it('a 403 ownership failure never exposes internal database details', async () => {
+      const response = await getShop(vendorA.accessToken, shopBId).expect(
+        403,
+      );
+
+      expect(Object.keys(response.body).sort()).toEqual(
+        ['error', 'message', 'statusCode'].filter(
+          (key) => key in response.body,
+        ),
+      );
+
+      const serialized = JSON.stringify(response.body).toLowerCase();
+      expect(serialized).not.toContain(vendorAVendorId.toLowerCase());
+      expect(serialized).not.toContain(vendorBVendorId.toLowerCase());
+      expect(serialized).not.toContain(shopBId.toLowerCase());
+      expect(serialized).not.toMatch(/prisma|postgres|sql/);
+    });
+  });
 });

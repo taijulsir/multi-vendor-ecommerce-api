@@ -8,7 +8,9 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { AuthorizationService } from './authorization/authorization.service';
+import { OwnershipService } from './authorization/ownership.service';
 import { AuthorizationGuard } from './guards/authorization.guard';
+import { VendorShopOwnershipGuard } from './guards/vendor-shop-ownership.guard';
 import { PasswordService } from './password/password.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { RefreshTokenService } from './token/refresh-token.service';
@@ -39,6 +41,8 @@ import { RefreshTokenService } from './token/refresh-token.service';
     RefreshTokenService,
     AuthorizationService,
     AuthorizationGuard,
+    OwnershipService,
+    VendorShopOwnershipGuard,
   ],
   exports: [
     AuthService,
@@ -46,6 +50,8 @@ import { RefreshTokenService } from './token/refresh-token.service';
     RefreshTokenService,
     AuthorizationService,
     AuthorizationGuard,
+    OwnershipService,
+    VendorShopOwnershipGuard,
   ],
 })
 export class AuthModule {}

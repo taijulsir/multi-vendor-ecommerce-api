@@ -963,6 +963,59 @@ Vendor A must not be allowed to update Vendor B's product.
 
 The request must fail with an appropriate authorization error.
 
+## RBAC vs. Ownership (implemented, Phase 9)
+
+Two separate guards, separate concerns, composed per-route rather than
+merged:
+
+- `AuthorizationGuard` (Phase 8) answers "is this identity allowed to
+  perform this **class** of action at all?" — role/permission metadata
+  only, no awareness of any specific resource.
+- Ownership guards (e.g. `VendorShopOwnershipGuard`, Phase 9) answer
+  "does **this specific** resource belong to this identity?" — resolved
+  from a `:id` route parameter, with no awareness of roles/permissions
+  except for the documented ADMIN bypass (below).
+
+A route may declare either, both (`@UseGuards(JwtAuthGuard,
+AuthorizationGuard, VendorShopOwnershipGuard)`), or neither. Both fail
+closed and both return `403 Forbidden` with the same generic,
+non-disclosing message shape on denial — a client cannot tell from the
+response alone which check failed, or (for ownership) whether the
+resource exists, belongs to someone else, or the caller has no
+owning relationship at all.
+
+## Trusted Identity Source (implemented)
+
+The owner identity used in every ownership comparison is always resolved
+server-side from the authenticated user (`req.user.id`, established by
+`JwtAuthGuard`/`JwtStrategy`) — **never** from a client-supplied
+`vendorId`/`userId` in the request body, query string, or any field other
+than the JWT-derived identity itself. A resource id (e.g. `:shopId`) is
+expected as a route parameter — that identifies *what* is being
+requested, not *who* is making the request.
+
+## Admin Bypass (implemented, Phase 9)
+
+`docs/database/vendor-shop.md` §20 explicitly names `ADMIN` as an
+elevated role that may access vendor-owned resources without an
+ownership match ("unless an elevated role such as ADMIN explicitly has
+access"). This is the only role granted this bypass; no other role
+bypasses ownership. The check reuses `AuthorizationService.hasRole`
+(Phase 8) rather than a second role-resolution implementation.
+
+## Ownership Scope (implemented, Phase 9)
+
+Concretely implemented so far: `User → Vendor → Shop`, the one ownership
+chain both explicitly documented
+(`docs/database/vendor-shop.md` §19–20) and already backed by an existing
+Prisma model with no application-layer endpoint yet built. Other
+vendor-owned entities the schema already models (`Product`, `VendorOrder`,
+`Wallet`, `Commission`, `PromotionVendor`, all carrying a `vendorId`) are
+architecturally covered by the same rule and the same intended pattern
+(resolve the trusted vendor id, then check it against the resource) but
+have no controllers yet — ownership checks for them will be added
+alongside those controllers, not speculatively ahead of them.
+
 ---
 
 # 24. Vendor Isolation
@@ -982,6 +1035,10 @@ Examples include:
 A vendor must only access resources that belong to that vendor unless an explicit authorization rule allows broader access.
 
 Admin-level access may bypass normal vendor ownership restrictions where permitted by the authorization model.
+
+Implemented for `Shop` in Phase 9 (`VendorShopOwnershipGuard` +
+`OwnershipService`) — see §23's "RBAC vs. Ownership" / "Admin Bypass" /
+"Ownership Scope" subsections for the concrete rule and current coverage.
 
 ---
 
