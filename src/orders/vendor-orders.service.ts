@@ -1,4 +1,8 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 
 import { OwnershipService } from '../auth/authorization/ownership.service';
 import { PrismaService } from '../prisma/prisma.service';

@@ -10,10 +10,7 @@ describe('@Roles()', () => {
     }
 
     const reflector = new Reflector();
-    const metadata = reflector.get(
-      ROLES_KEY,
-      TestController.prototype.handler,
-    );
+    const metadata = reflector.get(ROLES_KEY, TestController.prototype.handler);
 
     expect(metadata).toEqual(['ADMIN', 'VENDOR']);
   });
@@ -25,10 +22,7 @@ describe('@Roles()', () => {
     }
 
     const reflector = new Reflector();
-    const metadata = reflector.get(
-      ROLES_KEY,
-      TestController.prototype.handler,
-    );
+    const metadata = reflector.get(ROLES_KEY, TestController.prototype.handler);
 
     expect(metadata).toEqual([]);
   });

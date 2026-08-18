@@ -275,7 +275,10 @@ export class AuthService {
       throw new UnauthorizedException(INVALID_REFRESH_TOKEN_MESSAGE);
     }
 
-    return { accessToken: outcome.accessToken, refreshToken: outcome.refreshToken };
+    return {
+      accessToken: outcome.accessToken,
+      refreshToken: outcome.refreshToken,
+    };
   }
 
   /**

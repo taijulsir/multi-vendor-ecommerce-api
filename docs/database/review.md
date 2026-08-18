@@ -1102,8 +1102,8 @@ Duplicate review prevention         APPROVED
 Rating aggregation strategy         APPROVED
 Security requirements               APPROVED
 
-Prisma models                       NOT IMPLEMENTED
-Database migration                  NOT CREATED
+Prisma models                       IMPLEMENTED (schema only — no application layer)
+Database migration                  CREATED
 Review APIs                         NOT IMPLEMENTED
 Moderation APIs                     NOT IMPLEMENTED
 Rating aggregation                 NOT IMPLEMENTED

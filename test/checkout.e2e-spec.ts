@@ -125,7 +125,10 @@ describe('Checkout API (e2e)', () => {
     await app.init();
 
     const category = await prisma.category.create({
-      data: { name: 'Checkout Test Category', slug: uniqueSlug('checkout-cat') },
+      data: {
+        name: 'Checkout Test Category',
+        slug: uniqueSlug('checkout-cat'),
+      },
     });
     categoryId = category.id;
   });

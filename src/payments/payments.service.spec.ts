@@ -70,9 +70,12 @@ describe('PaymentsService', () => {
   });
 
   describe('createForUser', () => {
-    const dto = { masterOrderId: 'master-order-uuid', method: 'CASH_ON_DELIVERY' as const };
+    const dto = {
+      masterOrderId: 'master-order-uuid',
+      method: 'CASH_ON_DELIVERY' as const,
+    };
 
-    it("creates a payment and its first attempt, with amount/currency from the order", async () => {
+    it('creates a payment and its first attempt, with amount/currency from the order', async () => {
       prisma.masterOrder.findUnique.mockResolvedValue(makeOrder());
       prisma.payment.count.mockResolvedValue(0);
       tx.payment.create.mockResolvedValue({ id: 'payment-uuid' });
@@ -103,7 +106,10 @@ describe('PaymentsService', () => {
 
     it('never trusts a client-supplied amount/currency — both always come from the order', async () => {
       prisma.masterOrder.findUnique.mockResolvedValue(
-        makeOrder({ totalAmount: new Prisma.Decimal('9999.00'), currency: 'USD' }),
+        makeOrder({
+          totalAmount: new Prisma.Decimal('9999.00'),
+          currency: 'USD',
+        }),
       );
       prisma.payment.count.mockResolvedValue(0);
       tx.payment.create.mockResolvedValue({ id: 'payment-uuid' });
@@ -190,7 +196,10 @@ describe('PaymentsService', () => {
 
     it("rejects (403) another user's payment", async () => {
       prisma.payment.findUnique.mockResolvedValue(
-        makePayment({ status: 'FAILED', masterOrder: { userId: 'someone-else-uuid' } }),
+        makePayment({
+          status: 'FAILED',
+          masterOrder: { userId: 'someone-else-uuid' },
+        }),
       );
 
       await expect(
@@ -230,9 +239,9 @@ describe('PaymentsService', () => {
         new Error('connection terminated unexpectedly'),
       );
 
-      await expect(
-        service.retry('user-uuid', 'payment-uuid'),
-      ).rejects.toThrow('connection terminated unexpectedly');
+      await expect(service.retry('user-uuid', 'payment-uuid')).rejects.toThrow(
+        'connection terminated unexpectedly',
+      );
     });
   });
 
@@ -261,7 +270,7 @@ describe('PaymentsService', () => {
       ).rejects.toBeInstanceOf(ForbiddenException);
     });
 
-    it('allows an ADMIN to view another user\'s payment', async () => {
+    it("allows an ADMIN to view another user's payment", async () => {
       prisma.payment.findUnique.mockResolvedValue({
         ...makePayment(),
         masterOrder: { userId: 'someone-else-uuid' },
@@ -306,7 +315,11 @@ describe('PaymentsService', () => {
         createdAt: new Date(),
       });
 
-      const result = await service.createRefund('admin-uuid', 'payment-uuid', dto);
+      const result = await service.createRefund(
+        'admin-uuid',
+        'payment-uuid',
+        dto,
+      );
 
       expect(prisma.refund.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
@@ -319,7 +332,7 @@ describe('PaymentsService', () => {
       expect(result.id).toBe('refund-uuid');
     });
 
-    it("never trusts a client-supplied currency — it always comes from the payment", async () => {
+    it('never trusts a client-supplied currency — it always comes from the payment', async () => {
       prisma.payment.findUnique.mockResolvedValue(
         makePayment({
           currency: 'USD',
@@ -345,7 +358,9 @@ describe('PaymentsService', () => {
       });
 
       expect(prisma.refund.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ currency: 'USD' }) }),
+        expect.objectContaining({
+          data: expect.objectContaining({ currency: 'USD' }),
+        }),
       );
     });
 

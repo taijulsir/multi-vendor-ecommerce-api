@@ -67,7 +67,8 @@ export class AuthController {
         updatedAt: '2026-01-01T00:00:00.000Z',
         deletedAt: null,
         accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-        refreshToken: 'k3f9c2a01234a5b8c9d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f7081920a1b2c3d',
+        refreshToken:
+          'k3f9c2a01234a5b8c9d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f7081920a1b2c3d',
       },
     },
   })
@@ -93,7 +94,8 @@ export class AuthController {
     schema: {
       example: {
         accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-        refreshToken: 'k3f9c2a01234a5b8c9d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f7081920a1b2c3d',
+        refreshToken:
+          'k3f9c2a01234a5b8c9d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f7081920a1b2c3d',
       },
     },
   })
@@ -140,7 +142,8 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get the currently authenticated user' })
   @ApiOkResponse({
-    description: 'The authenticated user, re-derived from the current database state.',
+    description:
+      'The authenticated user, re-derived from the current database state.',
     schema: {
       example: {
         id: 'b3f1c2a0-1234-4a5b-8c9d-0e1f2a3b4c5d',
@@ -238,7 +241,8 @@ export class AuthController {
   })
   @ApiUnauthorizedResponse({ description: 'Missing/invalid access token.' })
   @ApiForbiddenResponse({
-    description: 'Authenticated, but missing the required role and/or permission.',
+    description:
+      'Authenticated, but missing the required role and/or permission.',
   })
   rbacDemoRoleAndPermission(@CurrentUser() user: SafeUser) {
     return {
@@ -254,7 +258,7 @@ export class AuthController {
   @ApiOperation({
     summary: '[RBAC demo] Requires ADMIN OR VENDOR (any one role suffices)',
     description:
-      'Demonstrates that multiple roles in one @Roles() call are OR\'d — ' +
+      "Demonstrates that multiple roles in one @Roles() call are OR'd — " +
       'not a real business endpoint.',
   })
   @ApiOkResponse({ description: 'Caller has ADMIN and/or VENDOR.' })

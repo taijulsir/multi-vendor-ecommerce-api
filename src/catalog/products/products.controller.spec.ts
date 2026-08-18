@@ -44,10 +44,7 @@ describe('ProductsController', () => {
 
       await controller.create(user, dto);
 
-      expect(productsService.createForUser).toHaveBeenCalledWith(
-        user.id,
-        dto,
-      );
+      expect(productsService.createForUser).toHaveBeenCalledWith(user.id, dto);
     });
   });
 
@@ -81,13 +78,10 @@ describe('ProductsController', () => {
       const updated = { id: 'product-uuid', name: 'New Name' };
       productsService.update.mockResolvedValue(updated);
 
-      await expect(
-        controller.update('product-uuid', dto),
-      ).resolves.toEqual(updated);
-      expect(productsService.update).toHaveBeenCalledWith(
-        'product-uuid',
-        dto,
+      await expect(controller.update('product-uuid', dto)).resolves.toEqual(
+        updated,
       );
+      expect(productsService.update).toHaveBeenCalledWith('product-uuid', dto);
     });
   });
 });

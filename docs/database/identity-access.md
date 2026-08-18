@@ -899,16 +899,23 @@ authentication and authorization architecture.
 
 ```text
 Architecture design       ✅ Approved
-Database tables            ⏳ Not created
-Prisma models              ⏳ Not created
-Migration                  ⏳ Not created
-Seed data                  ⏳ Not created
-API implementation         ⏳ Not started
-Tests                      ⏳ Not started
+Database tables            ✅ Created
+Prisma models              ✅ Implemented
+Migration                  ✅ Created
+Seed data                  ✅ Implemented (ADMIN/VENDOR/CUSTOMER roles, prisma/seed.ts)
+API implementation         ✅ Implemented (Phases 1–9)
+Tests                      ✅ Implemented (Phases 1–9)
 ```
 
-> The database schema will be implemented only after the remaining
-> domain specifications are reviewed and approved.
+> Phases 1–9 implemented registration, login, access-token issuance,
+> `JwtStrategy`/`JwtAuthGuard`/`GET /api/auth/me`, refresh-token
+> authentication with rotation and reuse detection, logout/session
+> revocation, RBAC (`AuthorizationGuard`, `@Roles()`, `@Permissions()`,
+> `AuthorizationService`), and the `User → Vendor → {Shop, Product,
+> VendorOrder}` ownership foundation (`OwnershipService` and its
+> per-entity guards) reused by every later domain. See
+> `docs/architecture.md` for the full authentication/authorization
+> architecture these phases established.
 
 This document represents the approved Identity & Access architecture
 for the initial multi-vendor e-commerce implementation.

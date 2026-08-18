@@ -36,12 +36,12 @@ export class OrdersController {
   }
 
   @Get(':masterOrderId')
-  @ApiOperation({ summary: 'Get one of the authenticated user\'s own orders' })
+  @ApiOperation({ summary: "Get one of the authenticated user's own orders" })
   @ApiParam({
     name: 'masterOrderId',
     description:
       "The order's id. Never trusted as an ownership claim by itself " +
-      "— the caller must own this order, or be an ADMIN.",
+      '— the caller must own this order, or be an ADMIN.',
   })
   @ApiOkResponse({ description: 'The order.' })
   @ApiUnauthorizedResponse({ description: 'Missing/invalid access token.' })

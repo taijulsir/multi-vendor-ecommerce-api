@@ -64,7 +64,10 @@ export class OwnershipService {
    * "not owned," so this method (and therefore anything built on it)
    * cannot be used to probe for a shop's existence.
    */
-  async isShopOwnedByVendor(shopId: string, vendorId: string): Promise<boolean> {
+  async isShopOwnedByVendor(
+    shopId: string,
+    vendorId: string,
+  ): Promise<boolean> {
     const count = await this.prisma.shop.count({
       where: { id: shopId, vendorId },
     });

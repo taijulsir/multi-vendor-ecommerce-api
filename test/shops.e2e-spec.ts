@@ -551,7 +551,11 @@ describe('Vendors + Shops API (e2e)', () => {
         await request(app.getHttpServer())
           .patch(`/api/shops/${shopAId}`)
           .set('Authorization', `Bearer ${vendorA.accessToken}`)
-          .send({ slug: (await prisma.shop.findUniqueOrThrow({ where: { id: shopBId } })).slug })
+          .send({
+            slug: (
+              await prisma.shop.findUniqueOrThrow({ where: { id: shopBId } })
+            ).slug,
+          })
           .expect(409);
       });
 

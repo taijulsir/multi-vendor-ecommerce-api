@@ -26,8 +26,6 @@ describe('PasswordService', () => {
   it('rejects an incorrect password against an existing hash', async () => {
     const hash = await service.hash('correct-horse-battery-staple');
 
-    await expect(service.verify(hash, 'wrong-password')).resolves.toBe(
-      false,
-    );
+    await expect(service.verify(hash, 'wrong-password')).resolves.toBe(false);
   });
 });

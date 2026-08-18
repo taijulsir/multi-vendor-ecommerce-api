@@ -27,9 +27,9 @@ describe('OwnershipService', () => {
     it("resolves the user's vendor id when the user has a vendor profile", async () => {
       prisma.vendor.findUnique.mockResolvedValue({ id: 'vendor-uuid' });
 
-      await expect(
-        service.getVendorIdForUser('user-uuid'),
-      ).resolves.toBe('vendor-uuid');
+      await expect(service.getVendorIdForUser('user-uuid')).resolves.toBe(
+        'vendor-uuid',
+      );
       expect(prisma.vendor.findUnique).toHaveBeenCalledWith({
         where: { userId: 'user-uuid', deletedAt: null },
         select: { id: true },
@@ -39,9 +39,7 @@ describe('OwnershipService', () => {
     it('returns null when the user has no vendor profile', async () => {
       prisma.vendor.findUnique.mockResolvedValue(null);
 
-      await expect(
-        service.getVendorIdForUser('user-uuid'),
-      ).resolves.toBeNull();
+      await expect(service.getVendorIdForUser('user-uuid')).resolves.toBeNull();
     });
 
     it('returns null (fails closed) for an unknown user id, without throwing', async () => {
@@ -57,9 +55,9 @@ describe('OwnershipService', () => {
         new Error('connection terminated unexpectedly'),
       );
 
-      await expect(
-        service.getVendorIdForUser('user-uuid'),
-      ).rejects.toThrow('connection terminated unexpectedly');
+      await expect(service.getVendorIdForUser('user-uuid')).rejects.toThrow(
+        'connection terminated unexpectedly',
+      );
     });
   });
 

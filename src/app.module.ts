@@ -20,7 +20,6 @@ import { PaymentsModule } from './payments/payments.module';
       envFilePath: ['.env'],
       cache: true,
       validate: validateEnvironment,
-
     }),
     PrismaModule,
     RedisModule,
@@ -43,6 +42,5 @@ import { PaymentsModule } from './payments/payments.module';
     OrdersModule,
     PaymentsModule,
   ],
-
 })
-export class AppModule { }
+export class AppModule {}

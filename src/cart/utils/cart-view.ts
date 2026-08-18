@@ -1,4 +1,8 @@
-import { Prisma, type Cart, type CartItem } from '../../generated/prisma/client';
+import {
+  Prisma,
+  type Cart,
+  type CartItem,
+} from '../../generated/prisma/client';
 
 /**
  * The API response shape for "the current user's cart". Not the raw
@@ -50,7 +54,10 @@ function toItemView(item: CartItem): CartItemView {
 export function toCartView(cart: Cart, items: CartItem[]): CartView {
   const itemViews = items.map(toItemView);
   const total = items
-    .reduce((sum, item) => sum.add(item.unitPriceSnapshot.mul(item.quantity)), new Prisma.Decimal(0))
+    .reduce(
+      (sum, item) => sum.add(item.unitPriceSnapshot.mul(item.quantity)),
+      new Prisma.Decimal(0),
+    )
     .toFixed(2);
 
   return {

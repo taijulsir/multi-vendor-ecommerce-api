@@ -11,7 +11,10 @@ import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { CreateRefundDto } from './dto/create-refund.dto';
-import { generateIdentifier, generateProviderReference } from './utils/identifier';
+import {
+  generateIdentifier,
+  generateProviderReference,
+} from './utils/identifier';
 import {
   toPaymentView,
   toRefundView,
@@ -165,7 +168,9 @@ export class PaymentsService {
         // already moved this payment out of FAILED.
         const current = await tx.payment.findUniqueOrThrow({
           where: { id: paymentId },
-          include: { attempts: { orderBy: { attemptNumber: 'desc' }, take: 1 } },
+          include: {
+            attempts: { orderBy: { attemptNumber: 'desc' }, take: 1 },
+          },
         });
 
         if (current.status !== 'FAILED') {
@@ -205,7 +210,10 @@ export class PaymentsService {
   async findById(userId: string, paymentId: string): Promise<PaymentView> {
     const payment = await this.prisma.payment.findUnique({
       where: { id: paymentId },
-      include: { ...PAYMENT_INCLUDE, masterOrder: { select: { userId: true } } },
+      include: {
+        ...PAYMENT_INCLUDE,
+        masterOrder: { select: { userId: true } },
+      },
     });
 
     if (!payment) {
@@ -303,7 +311,10 @@ export class PaymentsService {
       }
     }
 
-    if (error instanceof ConflictException || error instanceof BadRequestException) {
+    if (
+      error instanceof ConflictException ||
+      error instanceof BadRequestException
+    ) {
       return error;
     }
 

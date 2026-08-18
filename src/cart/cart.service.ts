@@ -5,7 +5,10 @@ import {
   Injectable,
 } from '@nestjs/common';
 
-import { isProductActive, isVendorActive } from '../catalog/products/utils/availability';
+import {
+  isProductActive,
+  isVendorActive,
+} from '../catalog/products/utils/availability';
 import { Prisma, type Cart, type CartItem } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AddCartItemDto } from './dto/add-cart-item.dto';

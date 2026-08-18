@@ -59,9 +59,7 @@ describe('ProductOwnershipGuard', () => {
 
     await expect(guard.canActivate(buildContext(user))).resolves.toBe(true);
 
-    expect(ownershipService.getVendorIdForUser).toHaveBeenCalledWith(
-      user.id,
-    );
+    expect(ownershipService.getVendorIdForUser).toHaveBeenCalledWith(user.id);
     expect(ownershipService.isProductOwnedByVendor).toHaveBeenCalledWith(
       'product-uuid',
       'vendor-uuid',
@@ -73,9 +71,9 @@ describe('ProductOwnershipGuard', () => {
     ownershipService.getVendorIdForUser.mockResolvedValue('vendor-a-uuid');
     ownershipService.isProductOwnedByVendor.mockResolvedValue(false);
 
-    await expect(
-      guard.canActivate(buildContext(user)),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(guard.canActivate(buildContext(user))).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
   });
 
   it('forbids (403) an unknown/nonexistent product id', async () => {
@@ -84,9 +82,7 @@ describe('ProductOwnershipGuard', () => {
     ownershipService.isProductOwnedByVendor.mockResolvedValue(false);
 
     await expect(
-      guard.canActivate(
-        buildContext(user, { productId: 'nonexistent-uuid' }),
-      ),
+      guard.canActivate(buildContext(user, { productId: 'nonexistent-uuid' })),
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
@@ -94,9 +90,9 @@ describe('ProductOwnershipGuard', () => {
     authorizationService.hasRole.mockResolvedValue(false);
     ownershipService.getVendorIdForUser.mockResolvedValue(null);
 
-    await expect(
-      guard.canActivate(buildContext(user)),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(guard.canActivate(buildContext(user))).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
     expect(ownershipService.isProductOwnedByVendor).not.toHaveBeenCalled();
   });
 
@@ -114,10 +110,7 @@ describe('ProductOwnershipGuard', () => {
 
     await expect(guard.canActivate(buildContext(user))).resolves.toBe(true);
 
-    expect(authorizationService.hasRole).toHaveBeenCalledWith(
-      user.id,
-      'ADMIN',
-    );
+    expect(authorizationService.hasRole).toHaveBeenCalledWith(user.id, 'ADMIN');
     expect(ownershipService.getVendorIdForUser).not.toHaveBeenCalled();
     expect(ownershipService.isProductOwnedByVendor).not.toHaveBeenCalled();
   });

@@ -265,8 +265,11 @@ describe('Auth API (e2e)', () => {
         .send({ refreshToken });
 
     it('rotates a valid refresh token: issues a new access token + refresh token, and invalidates the old one', async () => {
-      const { id, accessToken, refreshToken: tokenA } =
-        await registerAndLogin();
+      const {
+        id,
+        accessToken,
+        refreshToken: tokenA,
+      } = await registerAndLogin();
 
       const response = await doRefresh(tokenA).expect(200);
 
@@ -528,7 +531,7 @@ describe('Auth API (e2e)', () => {
       await doRefresh(tokenB).expect(401);
     });
 
-    it("isolates sessions for the SAME user: logging out session F1 (one device) does not affect independent session F2 (another device)", async () => {
+    it('isolates sessions for the SAME user: logging out session F1 (one device) does not affect independent session F2 (another device)', async () => {
       const email = uniqueEmail();
       registeredEmails.push(email);
 
@@ -562,9 +565,7 @@ describe('Auth API (e2e)', () => {
       const session1 = await registerAndLogin();
       const session2 = await registerAndLogin();
 
-      await doLogout(session1.accessToken, session1.refreshToken).expect(
-        204,
-      );
+      await doLogout(session1.accessToken, session1.refreshToken).expect(204);
 
       await doRefresh(session1.refreshToken).expect(401);
       await doRefresh(session2.refreshToken).expect(200);
@@ -683,7 +684,8 @@ describe('Auth API (e2e)', () => {
 
       // Flip the last character of the signature segment so the payload
       // is otherwise well-formed but the signature no longer verifies.
-      const tampered = accessToken.slice(0, -1) + (accessToken.endsWith('a') ? 'b' : 'a');
+      const tampered =
+        accessToken.slice(0, -1) + (accessToken.endsWith('a') ? 'b' : 'a');
 
       await request(app.getHttpServer())
         .get('/api/auth/me')

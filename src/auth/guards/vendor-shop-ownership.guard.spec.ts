@@ -59,9 +59,7 @@ describe('VendorShopOwnershipGuard', () => {
 
     await expect(guard.canActivate(buildContext(user))).resolves.toBe(true);
 
-    expect(ownershipService.getVendorIdForUser).toHaveBeenCalledWith(
-      user.id,
-    );
+    expect(ownershipService.getVendorIdForUser).toHaveBeenCalledWith(user.id);
     expect(ownershipService.isShopOwnedByVendor).toHaveBeenCalledWith(
       'shop-uuid',
       'vendor-uuid',
@@ -73,9 +71,9 @@ describe('VendorShopOwnershipGuard', () => {
     ownershipService.getVendorIdForUser.mockResolvedValue('vendor-a-uuid');
     ownershipService.isShopOwnedByVendor.mockResolvedValue(false);
 
-    await expect(
-      guard.canActivate(buildContext(user)),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(guard.canActivate(buildContext(user))).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
   });
 
   it('forbids (403) an unknown/nonexistent shop id', async () => {
@@ -92,9 +90,9 @@ describe('VendorShopOwnershipGuard', () => {
     authorizationService.hasRole.mockResolvedValue(false);
     ownershipService.getVendorIdForUser.mockResolvedValue(null);
 
-    await expect(
-      guard.canActivate(buildContext(user)),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(guard.canActivate(buildContext(user))).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
     // Never even asks whether the (nonexistent) vendor owns the shop.
     expect(ownershipService.isShopOwnedByVendor).not.toHaveBeenCalled();
   });
@@ -113,10 +111,7 @@ describe('VendorShopOwnershipGuard', () => {
 
     await expect(guard.canActivate(buildContext(user))).resolves.toBe(true);
 
-    expect(authorizationService.hasRole).toHaveBeenCalledWith(
-      user.id,
-      'ADMIN',
-    );
+    expect(authorizationService.hasRole).toHaveBeenCalledWith(user.id, 'ADMIN');
     // The ownership check is skipped entirely for an admin.
     expect(ownershipService.getVendorIdForUser).not.toHaveBeenCalled();
     expect(ownershipService.isShopOwnedByVendor).not.toHaveBeenCalled();

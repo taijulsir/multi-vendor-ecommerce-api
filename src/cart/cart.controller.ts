@@ -99,7 +99,7 @@ export class CartController {
   @ApiForbiddenResponse({
     description:
       'The item does not exist or does not belong to an active cart ' +
-      "owned by the caller. Intentionally generic — identical whether " +
+      'owned by the caller. Intentionally generic — identical whether ' +
       "the item belongs to another user's cart or does not exist.",
   })
   @ApiBadRequestResponse({ description: 'Invalid payload.' })
@@ -126,10 +126,7 @@ export class CartController {
       'The item does not exist or does not belong to an active cart ' +
       'owned by the caller. Intentionally generic.',
   })
-  removeItem(
-    @CurrentUser() user: SafeUser,
-    @Param('itemId') itemId: string,
-  ) {
+  removeItem(@CurrentUser() user: SafeUser, @Param('itemId') itemId: string) {
     return this.cartService.removeItem(user.id, itemId);
   }
 

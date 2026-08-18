@@ -59,9 +59,7 @@ describe('VendorOrderOwnershipGuard', () => {
 
     await expect(guard.canActivate(buildContext(user))).resolves.toBe(true);
 
-    expect(ownershipService.getVendorIdForUser).toHaveBeenCalledWith(
-      user.id,
-    );
+    expect(ownershipService.getVendorIdForUser).toHaveBeenCalledWith(user.id);
     expect(ownershipService.isVendorOrderOwnedByVendor).toHaveBeenCalledWith(
       'vendor-order-uuid',
       'vendor-uuid',
@@ -73,9 +71,9 @@ describe('VendorOrderOwnershipGuard', () => {
     ownershipService.getVendorIdForUser.mockResolvedValue('vendor-a-uuid');
     ownershipService.isVendorOrderOwnedByVendor.mockResolvedValue(false);
 
-    await expect(
-      guard.canActivate(buildContext(user)),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(guard.canActivate(buildContext(user))).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
   });
 
   it('forbids (403) an unknown/nonexistent VendorOrder id', async () => {
@@ -94,9 +92,9 @@ describe('VendorOrderOwnershipGuard', () => {
     authorizationService.hasRole.mockResolvedValue(false);
     ownershipService.getVendorIdForUser.mockResolvedValue(null);
 
-    await expect(
-      guard.canActivate(buildContext(user)),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(guard.canActivate(buildContext(user))).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
     expect(ownershipService.isVendorOrderOwnedByVendor).not.toHaveBeenCalled();
   });
 
@@ -114,10 +112,7 @@ describe('VendorOrderOwnershipGuard', () => {
 
     await expect(guard.canActivate(buildContext(user))).resolves.toBe(true);
 
-    expect(authorizationService.hasRole).toHaveBeenCalledWith(
-      user.id,
-      'ADMIN',
-    );
+    expect(authorizationService.hasRole).toHaveBeenCalledWith(user.id, 'ADMIN');
     expect(ownershipService.getVendorIdForUser).not.toHaveBeenCalled();
     expect(ownershipService.isVendorOrderOwnedByVendor).not.toHaveBeenCalled();
   });

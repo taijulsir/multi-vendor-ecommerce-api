@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiConflictResponse,
@@ -120,10 +128,7 @@ export class ProductsController {
   })
   @ApiNotFoundResponse({ description: 'Product not found.' })
   @ApiConflictResponse({ description: 'The requested slug is already in use.' })
-  update(
-    @Param('productId') productId: string,
-    @Body() dto: UpdateProductDto,
-  ) {
+  update(@Param('productId') productId: string, @Body() dto: UpdateProductDto) {
     return this.productsService.update(productId, dto);
   }
 }

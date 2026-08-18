@@ -52,7 +52,7 @@ export class VendorOrdersController {
       'and checked against this order (VendorOrderOwnershipGuard).',
   })
   @ApiOperation({
-    summary: 'Get one of the authenticated vendor\'s own VendorOrders',
+    summary: "Get one of the authenticated vendor's own VendorOrders",
     description: 'Requires the caller to own this VendorOrder, or be an ADMIN.',
   })
   @ApiOkResponse({ description: 'The vendor order.' })

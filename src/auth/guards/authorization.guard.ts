@@ -77,7 +77,7 @@ export class AuthorizationGuard implements CanActivate {
 
     if (hasRoleRequirement) {
       const results = await Promise.all(
-        requiredRoles!.map((role) =>
+        requiredRoles.map((role) =>
           this.authorizationService.hasRole(user.id, role),
         ),
       );
@@ -89,7 +89,7 @@ export class AuthorizationGuard implements CanActivate {
 
     if (hasPermissionRequirement) {
       const results = await Promise.all(
-        requiredPermissions!.map(({ resource, action }) =>
+        requiredPermissions.map(({ resource, action }) =>
           this.authorizationService.hasPermission(user.id, resource, action),
         ),
       );

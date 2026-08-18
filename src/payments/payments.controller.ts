@@ -81,7 +81,7 @@ export class PaymentsController {
 
   @Get(':paymentId')
   @ApiOperation({
-    summary: "Get a payment, including its attempt and refund history",
+    summary: 'Get a payment, including its attempt and refund history',
   })
   @ApiParam({ name: 'paymentId', description: "The payment's id." })
   @ApiOkResponse({ description: 'The payment.' })
@@ -104,7 +104,7 @@ export class PaymentsController {
   @ApiOperation({
     summary: 'Create a refund against a payment (ADMIN only)',
     description:
-      'The refund amount is validated against the payment\'s actual ' +
+      "The refund amount is validated against the payment's actual " +
       'refundable balance (paidAmount - refundedAmount) — it can never ' +
       'exceed it. Currency always comes from the payment being refunded.',
   })
@@ -115,7 +115,8 @@ export class PaymentsController {
   @ApiNotFoundResponse({ description: 'Payment not found.' })
   @ApiBadRequestResponse({ description: 'Invalid payload or refund amount.' })
   @ApiConflictResponse({
-    description: "The requested amount exceeds the payment's refundable balance.",
+    description:
+      "The requested amount exceeds the payment's refundable balance.",
   })
   createRefund(
     @CurrentUser() user: SafeUser,

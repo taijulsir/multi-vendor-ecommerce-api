@@ -57,7 +57,11 @@ describe('Orders API (e2e)', () => {
   const createVendorProductVariant = async () => {
     const owner = await registerAndLogin('FixtureOwner');
     const vendor = await prisma.vendor.create({
-      data: { userId: owner.id, businessName: 'Fixture Vendor', status: 'ACTIVE' },
+      data: {
+        userId: owner.id,
+        businessName: 'Fixture Vendor',
+        status: 'ACTIVE',
+      },
     });
     const product = await prisma.product.create({
       data: {
@@ -191,8 +195,12 @@ describe('Orders API (e2e)', () => {
       await prisma.inventoryTransaction.deleteMany({
         where: { inventory: { variantId: { in: variantIds } } },
       });
-      await prisma.inventory.deleteMany({ where: { variantId: { in: variantIds } } });
-      await prisma.productVariant.deleteMany({ where: { id: { in: variantIds } } });
+      await prisma.inventory.deleteMany({
+        where: { variantId: { in: variantIds } },
+      });
+      await prisma.productVariant.deleteMany({
+        where: { id: { in: variantIds } },
+      });
       await prisma.product.deleteMany({ where: { id: { in: productIds } } });
       await prisma.vendor.deleteMany({ where: { id: { in: vendorIds } } });
     }
@@ -200,7 +208,9 @@ describe('Orders API (e2e)', () => {
     await prisma.category.deleteMany({ where: { id: categoryId } });
 
     if (registeredEmails.length > 0) {
-      await prisma.user.deleteMany({ where: { email: { in: registeredEmails } } });
+      await prisma.user.deleteMany({
+        where: { email: { in: registeredEmails } },
+      });
     }
 
     await app.close();
@@ -235,7 +245,9 @@ describe('Orders API (e2e)', () => {
     });
 
     it("does not include another user's orders", async () => {
-      const { order: orderA } = await checkoutAsNewCustomer('IsolationOrdersUserA');
+      const { order: orderA } = await checkoutAsNewCustomer(
+        'IsolationOrdersUserA',
+      );
       const userB = await registerAndLogin('IsolationOrdersUserB');
 
       const response = await request(app.getHttpServer())
@@ -258,7 +270,8 @@ describe('Orders API (e2e)', () => {
     });
 
     it("returns the caller's own order with correct totals/currency/status", async () => {
-      const { customer, order } = await checkoutAsNewCustomer('DetailOrderUser');
+      const { customer, order } =
+        await checkoutAsNewCustomer('DetailOrderUser');
 
       const response = await request(app.getHttpServer())
         .get(`/api/orders/${order.id}`)
@@ -350,9 +363,9 @@ describe('Orders API (e2e)', () => {
     });
 
     it("does not include another vendor's orders", async () => {
-      const { fixture: fixtureA } = await checkoutAsNewCustomer(
-        'VendorIsolationOrdersUserA',
-      );
+      // Vendor A's checkout only matters for its side effect (creating a
+      // VendorOrder that Vendor B's own list must not include).
+      await checkoutAsNewCustomer('VendorIsolationOrdersUserA');
       const fixtureB = await createVendorProductVariant();
 
       const response = await request(app.getHttpServer())
@@ -411,9 +424,8 @@ describe('Orders API (e2e)', () => {
     });
 
     it('a spoofed vendorId/userId query parameter cannot bypass ownership', async () => {
-      const { fixture: fixtureA } = await checkoutAsNewCustomer(
-        'VendorSpoofOwnerA',
-      );
+      const { fixture: fixtureA } =
+        await checkoutAsNewCustomer('VendorSpoofOwnerA');
       const fixtureB = await createVendorProductVariant();
 
       const listResponse = await request(app.getHttpServer())

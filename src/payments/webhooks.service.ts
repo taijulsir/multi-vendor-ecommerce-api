@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 
-import { Prisma } from '../generated/prisma/client';
+import { Prisma, type PaymentWebhookEvent } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { WebhookEventDto } from './dto/webhook-event.dto';
 
@@ -13,10 +13,7 @@ const REFUND_SUCCEEDED = 'refund.succeeded';
 const REFUND_FAILED = 'refund.failed';
 
 export type WebhookProcessingOutcome =
-  | 'duplicate'
-  | 'ignored'
-  | 'unmatched'
-  | 'processed';
+  'duplicate' | 'ignored' | 'unmatched' | 'processed';
 
 /**
  * Payment webhook foundation (Phase 15).
@@ -82,7 +79,7 @@ export class WebhooksService {
   async processEvent(
     dto: WebhookEventDto,
   ): Promise<{ status: WebhookProcessingOutcome }> {
-    let event;
+    let event: PaymentWebhookEvent;
 
     try {
       event = await this.prisma.paymentWebhookEvent.create({
@@ -111,7 +108,11 @@ export class WebhooksService {
       case PAYMENT_SUCCEEDED:
         return this.handlePaymentOutcome(event.id, dto.providerReference, true);
       case PAYMENT_FAILED:
-        return this.handlePaymentOutcome(event.id, dto.providerReference, false);
+        return this.handlePaymentOutcome(
+          event.id,
+          dto.providerReference,
+          false,
+        );
       case REFUND_SUCCEEDED:
         return this.handleRefundOutcome(event.id, dto.providerReference, true);
       case REFUND_FAILED:
@@ -132,7 +133,10 @@ export class WebhooksService {
     succeeded: boolean,
   ): Promise<{ status: WebhookProcessingOutcome }> {
     if (!providerReference) {
-      return this.markUnmatched(webhookEventId, 'providerReference is required');
+      return this.markUnmatched(
+        webhookEventId,
+        'providerReference is required',
+      );
     }
 
     const attempt = await this.prisma.paymentAttempt.findFirst({
@@ -156,7 +160,8 @@ export class WebhooksService {
         data: {
           status: 'IGNORED',
           processedAt: new Date(),
-          errorMessage: 'Attempt already resolved; financial effect not reapplied',
+          errorMessage:
+            'Attempt already resolved; financial effect not reapplied',
         },
       });
 
@@ -209,7 +214,10 @@ export class WebhooksService {
     succeeded: boolean,
   ): Promise<{ status: WebhookProcessingOutcome }> {
     if (!providerReference) {
-      return this.markUnmatched(webhookEventId, 'providerReference is required');
+      return this.markUnmatched(
+        webhookEventId,
+        'providerReference is required',
+      );
     }
 
     const refund = await this.prisma.refund.findFirst({
@@ -232,7 +240,8 @@ export class WebhooksService {
         data: {
           status: 'IGNORED',
           processedAt: new Date(),
-          errorMessage: 'Refund already resolved; financial effect not reapplied',
+          errorMessage:
+            'Refund already resolved; financial effect not reapplied',
         },
       });
 

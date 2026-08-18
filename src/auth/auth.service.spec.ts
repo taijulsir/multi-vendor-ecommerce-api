@@ -75,12 +75,10 @@ describe('AuthService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    prisma.$transaction.mockImplementation((callback: any) =>
-      callback(prisma),
-    );
+    prisma.$transaction.mockImplementation((callback: any) => callback(prisma));
     service = new AuthService(
       prisma as any,
-      passwordService as any,
+      passwordService,
       jwtService as any,
       refreshTokenService as any,
     );
@@ -730,9 +728,9 @@ describe('AuthService', () => {
         new Error('connection terminated unexpectedly'),
       );
 
-      await expect(
-        service.logout(activeUser.id, logoutDto),
-      ).rejects.toThrow('connection terminated unexpectedly');
+      await expect(service.logout(activeUser.id, logoutDto)).rejects.toThrow(
+        'connection terminated unexpectedly',
+      );
     });
 
     it('never logs or leaks the raw refresh token or its hash', async () => {

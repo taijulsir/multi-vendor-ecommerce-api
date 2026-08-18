@@ -33,8 +33,7 @@ const INSUFFICIENT_INVENTORY_MESSAGE =
 // same 409 as one that arrives after the cart genuinely has no stock,
 // rather than a distinguishable "someone already checked this cart out"
 // message that would leak timing information.
-const CART_NO_LONGER_ACTIVE_MESSAGE =
-  'Your cart is empty or does not exist';
+const CART_NO_LONGER_ACTIVE_MESSAGE = 'Your cart is empty or does not exist';
 
 type ValidatedVariant = ProductVariant & {
   product: {
@@ -308,7 +307,7 @@ export class CheckoutService {
         throw new ConflictException(INSUFFICIENT_INVENTORY_MESSAGE);
       }
 
-      lines.push({ item, variant: variant as ValidatedVariant });
+      lines.push({ item, variant: variant });
     }
 
     return lines;

@@ -1,4 +1,8 @@
-import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+} from '@nestjs/common';
 
 import { Prisma } from '../generated/prisma/client';
 import { CartService } from './cart.service';
@@ -75,8 +79,8 @@ describe('CartService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    prisma.$transaction.mockImplementation(async (callback: (tx: unknown) => unknown) =>
-      callback(tx),
+    prisma.$transaction.mockImplementation(
+      async (callback: (tx: unknown) => unknown) => callback(tx),
     );
     service = new CartService(prisma as any);
   });
@@ -138,7 +142,10 @@ describe('CartService', () => {
       expect(tx.cartItem.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
           where: {
-            cartId_variantId: { cartId: 'cart-uuid', variantId: 'variant-uuid' },
+            cartId_variantId: {
+              cartId: 'cart-uuid',
+              variantId: 'variant-uuid',
+            },
           },
           create: expect.objectContaining({ quantity: 1 }),
         }),
@@ -157,7 +164,10 @@ describe('CartService', () => {
         items: [makeCartItem({ quantity: 3 })],
       });
 
-      await service.addItem('user-uuid', { variantId: 'variant-uuid', quantity: 2 });
+      await service.addItem('user-uuid', {
+        variantId: 'variant-uuid',
+        quantity: 2,
+      });
 
       expect(tx.cart.create).not.toHaveBeenCalled();
       expect(tx.cartItem.upsert).toHaveBeenCalledWith(
@@ -181,7 +191,9 @@ describe('CartService', () => {
       await service.addItem('user-uuid', { variantId: 'variant-uuid' });
 
       expect(tx.cartItem.upsert).toHaveBeenCalledWith(
-        expect.objectContaining({ create: expect.objectContaining({ quantity: 1 }) }),
+        expect.objectContaining({
+          create: expect.objectContaining({ quantity: 1 }),
+        }),
       );
     });
 
@@ -277,7 +289,9 @@ describe('CartService', () => {
       tx.cartItem.upsert.mockResolvedValue(makeCartItem());
       tx.cart.findUniqueOrThrow.mockResolvedValue({ ...makeCart(), items: [] });
 
-      const result = await service.addItem('user-uuid', { variantId: 'variant-uuid' });
+      const result = await service.addItem('user-uuid', {
+        variantId: 'variant-uuid',
+      });
 
       expect(result.id).toBe('cart-uuid');
       expect(tx.cartItem.upsert).toHaveBeenCalled();
@@ -306,12 +320,19 @@ describe('CartService', () => {
         items: [makeCartItem({ quantity: 5 })],
       });
 
-      const result = await service.updateItemQuantity('user-uuid', 'item-uuid', {
-        quantity: 5,
-      });
+      const result = await service.updateItemQuantity(
+        'user-uuid',
+        'item-uuid',
+        {
+          quantity: 5,
+        },
+      );
 
       expect(prisma.cartItem.findFirst).toHaveBeenCalledWith({
-        where: { id: 'item-uuid', cart: { userId: 'user-uuid', status: 'ACTIVE' } },
+        where: {
+          id: 'item-uuid',
+          cart: { userId: 'user-uuid', status: 'ACTIVE' },
+        },
       });
       expect(prisma.cartItem.update).toHaveBeenCalledWith({
         where: { id: 'item-uuid' },
@@ -325,7 +346,9 @@ describe('CartService', () => {
       prisma.cartItem.update.mockResolvedValue(makeCartItem({ quantity: 5 }));
       prisma.cart.findFirst.mockResolvedValue({ ...makeCart(), items: [] });
 
-      await service.updateItemQuantity('user-uuid', 'item-uuid', { quantity: 5 });
+      await service.updateItemQuantity('user-uuid', 'item-uuid', {
+        quantity: 5,
+      });
 
       expect(prisma.cartItem.update).toHaveBeenCalledWith({
         where: { id: 'item-uuid' },

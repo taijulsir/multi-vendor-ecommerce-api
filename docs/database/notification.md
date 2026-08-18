@@ -1295,8 +1295,8 @@ BullMQ integration strategy           APPROVED
 Delivery separation                   APPROVED
 Security requirements                 APPROVED
 
-Prisma models                         NOT IMPLEMENTED
-Database migration                    NOT CREATED
+Prisma models                         IMPLEMENTED (schema only — no application layer)
+Database migration                    CREATED
 Notification APIs                    NOT IMPLEMENTED
 Notification service                 NOT IMPLEMENTED
 BullMQ workers                       NOT IMPLEMENTED

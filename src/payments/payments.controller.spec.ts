@@ -65,7 +65,10 @@ describe('PaymentsController', () => {
   });
 
   it('createRefund delegates to PaymentsService.createRefund with the RBAC-resolved user, route param, and dto', async () => {
-    const dto: CreateRefundDto = { amount: '500.00', reason: 'CUSTOMER_RETURN' };
+    const dto: CreateRefundDto = {
+      amount: '500.00',
+      reason: 'CUSTOMER_RETURN',
+    };
     paymentsService.createRefund.mockResolvedValue({ id: 'refund-uuid' });
 
     await controller.createRefund(user, 'payment-uuid', dto);

@@ -77,9 +77,9 @@ describe('ShopsController', () => {
       const updated = { id: 'shop-uuid', name: 'New Name' };
       shopsService.update.mockResolvedValue(updated);
 
-      await expect(
-        controller.update('shop-uuid', dto),
-      ).resolves.toEqual(updated);
+      await expect(controller.update('shop-uuid', dto)).resolves.toEqual(
+        updated,
+      );
       expect(shopsService.update).toHaveBeenCalledWith('shop-uuid', dto);
     });
   });

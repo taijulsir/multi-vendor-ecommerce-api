@@ -81,9 +81,9 @@ describe('VendorOrdersService', () => {
         new Error('connection terminated unexpectedly'),
       );
 
-      await expect(
-        service.findMyVendorOrders('user-uuid'),
-      ).rejects.toThrow('connection terminated unexpectedly');
+      await expect(service.findMyVendorOrders('user-uuid')).rejects.toThrow(
+        'connection terminated unexpectedly',
+      );
     });
   });
 
@@ -100,9 +100,9 @@ describe('VendorOrdersService', () => {
     it('throws NotFoundException when the vendor order does not exist (e.g. ADMIN bypass, no prior existence check)', async () => {
       prisma.vendorOrder.findUnique.mockResolvedValue(null);
 
-      await expect(
-        service.findById('unknown-uuid'),
-      ).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.findById('unknown-uuid')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
 
     it('propagates database errors', async () => {

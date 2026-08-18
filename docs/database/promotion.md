@@ -1330,8 +1330,8 @@ Concurrency strategy                 APPROVED
 Idempotency strategy                 APPROVED
 Security requirements                APPROVED
 
-Prisma models                        NOT IMPLEMENTED
-Database migration                   NOT CREATED
+Prisma models                        IMPLEMENTED (schema only — no application layer)
+Database migration                   CREATED
 Promotion APIs                       NOT IMPLEMENTED
 Coupon APIs                          NOT IMPLEMENTED
 Promotion calculation service        NOT IMPLEMENTED

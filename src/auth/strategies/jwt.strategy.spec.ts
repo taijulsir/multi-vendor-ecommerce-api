@@ -83,17 +83,15 @@ describe('JwtStrategy', () => {
     await expect(
       strategy.validate({ sub: undefined as unknown as string }),
     ).rejects.toBeInstanceOf(UnauthorizedException);
-    await expect(
-      strategy.validate({ sub: '' }),
-    ).rejects.toBeInstanceOf(UnauthorizedException);
+    await expect(strategy.validate({ sub: '' })).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
 
     expect(prisma.user.findUnique).not.toHaveBeenCalled();
   });
 
   it('treats a database lookup failure (e.g. a malformed sub) as an authentication failure, not an internal error', async () => {
-    prisma.user.findUnique.mockRejectedValue(
-      new Error('Invalid UUID format'),
-    );
+    prisma.user.findUnique.mockRejectedValue(new Error('Invalid UUID format'));
 
     await expect(
       strategy.validate({ sub: 'not-a-valid-uuid' }),

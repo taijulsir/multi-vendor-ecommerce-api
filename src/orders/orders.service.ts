@@ -68,10 +68,7 @@ export class OrdersService {
     }
 
     if (order.userId !== userId) {
-      const isAdmin = await this.authorizationService.hasRole(
-        userId,
-        'ADMIN',
-      );
+      const isAdmin = await this.authorizationService.hasRole(userId, 'ADMIN');
 
       if (!isAdmin) {
         throw new ForbiddenException(FORBIDDEN_MESSAGE);

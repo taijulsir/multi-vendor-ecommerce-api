@@ -34,9 +34,9 @@ describe('VendorsService', () => {
       const created = { id: 'vendor-uuid', userId: 'user-uuid', ...dto };
       prisma.vendor.create.mockResolvedValue(created);
 
-      await expect(
-        service.createForUser('user-uuid', dto),
-      ).resolves.toEqual(created);
+      await expect(service.createForUser('user-uuid', dto)).resolves.toEqual(
+        created,
+      );
 
       expect(prisma.vendor.create).toHaveBeenCalledWith({
         data: {
@@ -62,7 +62,9 @@ describe('VendorsService', () => {
     });
 
     it('rejects (409) a second application when the user already has a vendor profile (pre-check)', async () => {
-      ownershipService.getVendorIdForUser.mockResolvedValue('existing-vendor-uuid');
+      ownershipService.getVendorIdForUser.mockResolvedValue(
+        'existing-vendor-uuid',
+      );
 
       await expect(
         service.createForUser('user-uuid', dto),
@@ -111,9 +113,9 @@ describe('VendorsService', () => {
     it('throws NotFoundException when the user has no vendor profile', async () => {
       prisma.vendor.findFirst.mockResolvedValue(null);
 
-      await expect(
-        service.findForUser('user-uuid'),
-      ).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.findForUser('user-uuid')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
   });
 });

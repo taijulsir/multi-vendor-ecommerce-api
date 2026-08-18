@@ -38,9 +38,7 @@ describe('AuthorizationService', () => {
     it('returns an empty array for a user with no roles (including an unknown user id)', async () => {
       prisma.userRole.findMany.mockResolvedValue([]);
 
-      await expect(service.getUserRoles('unknown-uuid')).resolves.toEqual(
-        [],
-      );
+      await expect(service.getUserRoles('unknown-uuid')).resolves.toEqual([]);
     });
 
     it('propagates database errors', async () => {
@@ -95,9 +93,9 @@ describe('AuthorizationService', () => {
     it('returns an empty array for a user with no roles', async () => {
       prisma.role.findMany.mockResolvedValue([]);
 
-      await expect(
-        service.getUserPermissions('unknown-uuid'),
-      ).resolves.toEqual([]);
+      await expect(service.getUserPermissions('unknown-uuid')).resolves.toEqual(
+        [],
+      );
     });
 
     it('propagates database errors', async () => {
@@ -105,9 +103,9 @@ describe('AuthorizationService', () => {
         new Error('connection terminated unexpectedly'),
       );
 
-      await expect(
-        service.getUserPermissions('user-uuid'),
-      ).rejects.toThrow('connection terminated unexpectedly');
+      await expect(service.getUserPermissions('user-uuid')).rejects.toThrow(
+        'connection terminated unexpectedly',
+      );
     });
   });
 
@@ -115,9 +113,7 @@ describe('AuthorizationService', () => {
     it('returns true when the user has the role', async () => {
       prisma.userRole.count.mockResolvedValue(1);
 
-      await expect(service.hasRole('user-uuid', 'ADMIN')).resolves.toBe(
-        true,
-      );
+      await expect(service.hasRole('user-uuid', 'ADMIN')).resolves.toBe(true);
       expect(prisma.userRole.count).toHaveBeenCalledWith({
         where: { userId: 'user-uuid', role: { name: 'ADMIN' } },
       });
@@ -126,17 +122,15 @@ describe('AuthorizationService', () => {
     it('returns false when the user does not have the role', async () => {
       prisma.userRole.count.mockResolvedValue(0);
 
-      await expect(service.hasRole('user-uuid', 'ADMIN')).resolves.toBe(
-        false,
-      );
+      await expect(service.hasRole('user-uuid', 'ADMIN')).resolves.toBe(false);
     });
 
     it('returns false (fails closed) for an unknown user id, without throwing', async () => {
       prisma.userRole.count.mockResolvedValue(0);
 
-      await expect(
-        service.hasRole('unknown-uuid', 'ADMIN'),
-      ).resolves.toBe(false);
+      await expect(service.hasRole('unknown-uuid', 'ADMIN')).resolves.toBe(
+        false,
+      );
     });
 
     it('propagates database errors', async () => {

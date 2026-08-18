@@ -41,9 +41,9 @@ describe('ShopsService', () => {
       const created = { id: 'shop-uuid', vendorId: 'vendor-uuid', ...dto };
       prisma.shop.create.mockResolvedValue(created);
 
-      await expect(
-        service.createForUser('user-uuid', dto),
-      ).resolves.toEqual(created);
+      await expect(service.createForUser('user-uuid', dto)).resolves.toEqual(
+        created,
+      );
 
       expect(ownershipService.getVendorIdForUser).toHaveBeenCalledWith(
         'user-uuid',
@@ -160,9 +160,9 @@ describe('ShopsService', () => {
     it('throws NotFoundException when the shop does not exist (e.g. ADMIN bypass, no prior existence check)', async () => {
       prisma.shop.findFirst.mockResolvedValue(null);
 
-      await expect(
-        service.findById('unknown-uuid'),
-      ).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.findById('unknown-uuid')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
   });
 
@@ -185,7 +185,11 @@ describe('ShopsService', () => {
       const result = await service.findPublicBySlug('taijul-electronics');
 
       expect(prisma.shop.findFirst).toHaveBeenCalledWith({
-        where: { slug: 'taijul-electronics', status: 'ACTIVE', deletedAt: null },
+        where: {
+          slug: 'taijul-electronics',
+          status: 'ACTIVE',
+          deletedAt: null,
+        },
       });
       expect(result).toEqual({
         id: 'shop-uuid',

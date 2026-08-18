@@ -37,7 +37,9 @@ describe('WebhooksService', () => {
     prisma.$transaction.mockImplementation(
       async (callback: (tx: unknown) => unknown) => callback(tx),
     );
-    prisma.paymentWebhookEvent.create.mockResolvedValue({ id: 'webhook-event-uuid' });
+    prisma.paymentWebhookEvent.create.mockResolvedValue({
+      id: 'webhook-event-uuid',
+    });
     service = new WebhooksService(prisma as any);
   });
 
@@ -183,7 +185,10 @@ describe('WebhooksService', () => {
         paymentId: 'payment-uuid',
         providerReference: 'ref_abc123',
         status: 'INITIATED',
-        payment: { amount: new Prisma.Decimal('5000.00'), masterOrderId: 'master-order-uuid' },
+        payment: {
+          amount: new Prisma.Decimal('5000.00'),
+          masterOrderId: 'master-order-uuid',
+        },
       });
 
       const result = await service.processEvent({

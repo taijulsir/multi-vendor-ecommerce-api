@@ -58,7 +58,11 @@ describe('Payments API (e2e)', () => {
   const createVendorProductVariant = async () => {
     const owner = await registerAndLogin('FixtureOwner');
     const vendor = await prisma.vendor.create({
-      data: { userId: owner.id, businessName: 'Fixture Vendor', status: 'ACTIVE' },
+      data: {
+        userId: owner.id,
+        businessName: 'Fixture Vendor',
+        status: 'ACTIVE',
+      },
     });
     const product = await prisma.product.create({
       data: {
@@ -108,7 +112,9 @@ describe('Payments API (e2e)', () => {
       where: { name: 'ADMIN' },
     });
     const admin = await registerAndLogin(firstName);
-    await prisma.userRole.create({ data: { userId: admin.id, roleId: adminRole.id } });
+    await prisma.userRole.create({
+      data: { userId: admin.id, roleId: adminRole.id },
+    });
 
     return admin;
   };
@@ -133,7 +139,10 @@ describe('Payments API (e2e)', () => {
     await app.init();
 
     const category = await prisma.category.create({
-      data: { name: 'Payments Test Category', slug: uniqueSlug('payments-cat') },
+      data: {
+        name: 'Payments Test Category',
+        slug: uniqueSlug('payments-cat'),
+      },
     });
     categoryId = category.id;
   });
@@ -159,7 +168,9 @@ describe('Payments API (e2e)', () => {
         });
         const paymentIds = payments.map((p) => p.id);
 
-        await prisma.refund.deleteMany({ where: { paymentId: { in: paymentIds } } });
+        await prisma.refund.deleteMany({
+          where: { paymentId: { in: paymentIds } },
+        });
         await prisma.paymentAttempt.deleteMany({
           where: { paymentId: { in: paymentIds } },
         });
@@ -177,11 +188,15 @@ describe('Payments API (e2e)', () => {
         await prisma.vendorOrderStatusHistory.deleteMany({
           where: { vendorOrderId: { in: vendorOrderIds } },
         });
-        await prisma.vendorOrder.deleteMany({ where: { id: { in: vendorOrderIds } } });
+        await prisma.vendorOrder.deleteMany({
+          where: { id: { in: vendorOrderIds } },
+        });
         await prisma.orderStatusHistory.deleteMany({
           where: { masterOrderId: { in: masterOrderIds } },
         });
-        await prisma.masterOrder.deleteMany({ where: { id: { in: masterOrderIds } } });
+        await prisma.masterOrder.deleteMany({
+          where: { id: { in: masterOrderIds } },
+        });
       }
 
       await prisma.cart.deleteMany({ where: { userId: { in: testUserIds } } });
@@ -208,8 +223,12 @@ describe('Payments API (e2e)', () => {
       await prisma.inventoryTransaction.deleteMany({
         where: { inventory: { variantId: { in: variantIds } } },
       });
-      await prisma.inventory.deleteMany({ where: { variantId: { in: variantIds } } });
-      await prisma.productVariant.deleteMany({ where: { id: { in: variantIds } } });
+      await prisma.inventory.deleteMany({
+        where: { variantId: { in: variantIds } },
+      });
+      await prisma.productVariant.deleteMany({
+        where: { id: { in: variantIds } },
+      });
       await prisma.product.deleteMany({ where: { id: { in: productIds } } });
       await prisma.vendor.deleteMany({ where: { id: { in: vendorIds } } });
     }
@@ -217,7 +236,9 @@ describe('Payments API (e2e)', () => {
     await prisma.category.deleteMany({ where: { id: categoryId } });
 
     if (registeredEmails.length > 0) {
-      await prisma.user.deleteMany({ where: { email: { in: registeredEmails } } });
+      await prisma.user.deleteMany({
+        where: { email: { in: registeredEmails } },
+      });
     }
 
     await app.close();
@@ -232,7 +253,8 @@ describe('Payments API (e2e)', () => {
     });
 
     it('creates a payment with amount/currency derived from the order, and a first PaymentAttempt', async () => {
-      const { customer, order } = await checkoutAsNewCustomer('CreatePaymentUser');
+      const { customer, order } =
+        await checkoutAsNewCustomer('CreatePaymentUser');
 
       const response = await request(app.getHttpServer())
         .post('/api/payments')
@@ -251,7 +273,8 @@ describe('Payments API (e2e)', () => {
     });
 
     it('rejects (400) client-supplied amount/currency/status — unknown properties rejected by the global whitelist', async () => {
-      const { customer, order } = await checkoutAsNewCustomer('SpoofPaymentUser');
+      const { customer, order } =
+        await checkoutAsNewCustomer('SpoofPaymentUser');
 
       await request(app.getHttpServer())
         .post('/api/payments')
@@ -267,7 +290,9 @@ describe('Payments API (e2e)', () => {
     });
 
     it('rejects (400) an invalid payload (missing method)', async () => {
-      const { customer, order } = await checkoutAsNewCustomer('InvalidPaymentDtoUser');
+      const { customer, order } = await checkoutAsNewCustomer(
+        'InvalidPaymentDtoUser',
+      );
 
       await request(app.getHttpServer())
         .post('/api/payments')
@@ -298,7 +323,9 @@ describe('Payments API (e2e)', () => {
     });
 
     it('rejects (409) a second payment for an order that already has one', async () => {
-      const { customer, order } = await checkoutAsNewCustomer('DuplicatePaymentUser');
+      const { customer, order } = await checkoutAsNewCustomer(
+        'DuplicatePaymentUser',
+      );
 
       await request(app.getHttpServer())
         .post('/api/payments')
@@ -322,7 +349,8 @@ describe('Payments API (e2e)', () => {
     });
 
     it("returns the caller's own payment", async () => {
-      const { customer, order } = await checkoutAsNewCustomer('ViewPaymentUser');
+      const { customer, order } =
+        await checkoutAsNewCustomer('ViewPaymentUser');
       const created = await request(app.getHttpServer())
         .post('/api/payments')
         .set('Authorization', `Bearer ${customer.accessToken}`)
@@ -382,7 +410,8 @@ describe('Payments API (e2e)', () => {
     });
 
     it('processes payment.succeeded: marks the attempt/payment PAID and syncs MasterOrder.paymentStatus', async () => {
-      const { customer, order } = await checkoutAsNewCustomer('WebhookSuccessUser');
+      const { customer, order } =
+        await checkoutAsNewCustomer('WebhookSuccessUser');
       const created = await request(app.getHttpServer())
         .post('/api/payments')
         .set('Authorization', `Bearer ${customer.accessToken}`)
@@ -418,7 +447,8 @@ describe('Payments API (e2e)', () => {
     });
 
     it('processes payment.failed: marks the attempt/payment FAILED and syncs MasterOrder.paymentStatus', async () => {
-      const { customer, order } = await checkoutAsNewCustomer('WebhookFailUser');
+      const { customer, order } =
+        await checkoutAsNewCustomer('WebhookFailUser');
       const created = await request(app.getHttpServer())
         .post('/api/payments')
         .set('Authorization', `Bearer ${customer.accessToken}`)
@@ -450,7 +480,8 @@ describe('Payments API (e2e)', () => {
     });
 
     it('a replayed (duplicate) event is a no-op and does not double-apply the state change', async () => {
-      const { customer, order } = await checkoutAsNewCustomer('WebhookReplayUser');
+      const { customer, order } =
+        await checkoutAsNewCustomer('WebhookReplayUser');
       const created = await request(app.getHttpServer())
         .post('/api/payments')
         .set('Authorization', `Bearer ${customer.accessToken}`)
@@ -486,7 +517,8 @@ describe('Payments API (e2e)', () => {
     });
 
     it('an unrecognized eventType is recorded as ignored and does not change any state', async () => {
-      const { customer, order } = await checkoutAsNewCustomer('WebhookIgnoredUser');
+      const { customer, order } =
+        await checkoutAsNewCustomer('WebhookIgnoredUser');
       const created = await request(app.getHttpServer())
         .post('/api/payments')
         .set('Authorization', `Bearer ${customer.accessToken}`)
@@ -536,7 +568,8 @@ describe('Payments API (e2e)', () => {
     });
 
     it('rejects (409) retrying a payment that is not FAILED', async () => {
-      const { customer, order } = await checkoutAsNewCustomer('RetryNotFailedUser');
+      const { customer, order } =
+        await checkoutAsNewCustomer('RetryNotFailedUser');
       const created = await request(app.getHttpServer())
         .post('/api/payments')
         .set('Authorization', `Bearer ${customer.accessToken}`)
@@ -550,7 +583,8 @@ describe('Payments API (e2e)', () => {
     });
 
     it('creates a second PaymentAttempt after a FAILED payment, preserving the first attempt', async () => {
-      const { customer, order } = await checkoutAsNewCustomer('RetrySuccessUser');
+      const { customer, order } =
+        await checkoutAsNewCustomer('RetrySuccessUser');
       const created = await request(app.getHttpServer())
         .post('/api/payments')
         .set('Authorization', `Bearer ${customer.accessToken}`)
@@ -630,7 +664,8 @@ describe('Payments API (e2e)', () => {
     });
 
     it('rejects (403) a non-ADMIN caller, including the payment owner', async () => {
-      const { customer, paymentId } = await paidPaymentFixture('RefundNonAdminUser');
+      const { customer, paymentId } =
+        await paidPaymentFixture('RefundNonAdminUser');
 
       await request(app.getHttpServer())
         .post(`/api/payments/${paymentId}/refunds`)
@@ -651,7 +686,9 @@ describe('Payments API (e2e)', () => {
     });
 
     it('rejects (409) a refund amount exceeding the refundable balance', async () => {
-      const { order, paymentId } = await paidPaymentFixture('RefundExcessiveUser');
+      const { order, paymentId } = await paidPaymentFixture(
+        'RefundExcessiveUser',
+      );
       const admin = await createAdmin('RefundExcessiveAdmin');
       const excessive = (Number(order.totalAmount) + 100).toFixed(2);
 
@@ -663,9 +700,8 @@ describe('Payments API (e2e)', () => {
     });
 
     it('creates a partial refund and, on refund.succeeded, marks the payment PARTIALLY_REFUNDED and syncs MasterOrder.paymentStatus', async () => {
-      const { customer, order, paymentId } = await paidPaymentFixture(
-        'RefundPartialUser',
-      );
+      const { customer, order, paymentId } =
+        await paidPaymentFixture('RefundPartialUser');
       const admin = await createAdmin('RefundPartialAdmin');
       const partialAmount = (Number(order.totalAmount) / 2).toFixed(2);
 
@@ -704,7 +740,9 @@ describe('Payments API (e2e)', () => {
     });
 
     it('a second refund cannot push cumulative refunds past paidAmount', async () => {
-      const { order, paymentId } = await paidPaymentFixture('RefundCumulativeUser');
+      const { order, paymentId } = await paidPaymentFixture(
+        'RefundCumulativeUser',
+      );
       const admin = await createAdmin('RefundCumulativeAdmin');
       const total = Number(order.totalAmount);
 

@@ -1,5 +1,10 @@
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
-import { ApiBadRequestResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBadRequestResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 
 import { WebhookEventDto } from './dto/webhook-event.dto';
 import { WebhooksService } from './webhooks.service';
@@ -23,7 +28,7 @@ export class WebhooksController {
   @ApiOperation({
     summary: 'Receive a payment/refund gateway event',
     description:
-      'Foundation-level webhook ingestion, matching PaymentWebhookEvent\'s ' +
+      "Foundation-level webhook ingestion, matching PaymentWebhookEvent's " +
       'own field shape rather than any specific real gateway payload. ' +
       'Idempotent via the existing UNIQUE(provider, eventId) constraint ' +
       '— a replayed event is a no-op. Always returns 200 for a ' +

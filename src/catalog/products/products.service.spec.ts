@@ -44,9 +44,9 @@ describe('ProductsService', () => {
       const created = { id: 'product-uuid', vendorId: 'vendor-uuid', ...dto };
       prisma.product.create.mockResolvedValue(created);
 
-      await expect(
-        service.createForUser('user-uuid', dto),
-      ).resolves.toEqual(created);
+      await expect(service.createForUser('user-uuid', dto)).resolves.toEqual(
+        created,
+      );
 
       expect(ownershipService.getVendorIdForUser).toHaveBeenCalledWith(
         'user-uuid',
@@ -122,9 +122,9 @@ describe('ProductsService', () => {
         new Error('connection terminated unexpectedly'),
       );
 
-      await expect(
-        service.createForUser('user-uuid', dto),
-      ).rejects.toThrow('connection terminated unexpectedly');
+      await expect(service.createForUser('user-uuid', dto)).rejects.toThrow(
+        'connection terminated unexpectedly',
+      );
     });
   });
 
@@ -133,9 +133,7 @@ describe('ProductsService', () => {
       const product = { id: 'product-uuid', vendorId: 'vendor-uuid' };
       prisma.product.findFirst.mockResolvedValue(product);
 
-      await expect(service.findById('product-uuid')).resolves.toEqual(
-        product,
-      );
+      await expect(service.findById('product-uuid')).resolves.toEqual(product);
       expect(prisma.product.findFirst).toHaveBeenCalledWith({
         where: { id: 'product-uuid', deletedAt: null },
       });
@@ -144,9 +142,9 @@ describe('ProductsService', () => {
     it('throws NotFoundException when the product does not exist (e.g. ADMIN bypass, no prior existence check)', async () => {
       prisma.product.findFirst.mockResolvedValue(null);
 
-      await expect(
-        service.findById('unknown-uuid'),
-      ).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.findById('unknown-uuid')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
   });
 

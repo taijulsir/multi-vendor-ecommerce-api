@@ -13,7 +13,8 @@ import { UpdateCategoryDto } from './dto/update-category.dto';
 const PRISMA_UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
 const CATEGORY_NOT_FOUND_MESSAGE = 'Category not found';
 const DUPLICATE_SLUG_MESSAGE = 'This slug is already in use';
-const INVALID_PARENT_MESSAGE = 'parentId does not reference an existing category';
+const INVALID_PARENT_MESSAGE =
+  'parentId does not reference an existing category';
 const CIRCULAR_PARENT_MESSAGE =
   'parentId would create a circular category relationship';
 
@@ -138,10 +139,11 @@ export class CategoriesService {
       }
       visited.add(currentId);
 
-      const parent = await this.prisma.category.findUnique({
-        where: { id: currentId },
-        select: { parentId: true },
-      });
+      const parent: { parentId: string | null } | null =
+        await this.prisma.category.findUnique({
+          where: { id: currentId },
+          select: { parentId: true },
+        });
 
       currentId = parent?.parentId ?? null;
     }

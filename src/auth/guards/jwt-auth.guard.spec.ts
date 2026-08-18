@@ -9,7 +9,7 @@ describe('JwtAuthGuard', () => {
     guard = new JwtAuthGuard();
   });
 
-  it('is defined and exposes canActivate (from Passport AuthGuard(\'jwt\'))', () => {
+  it("is defined and exposes canActivate (from Passport AuthGuard('jwt'))", () => {
     expect(guard).toBeDefined();
     expect(typeof guard.canActivate).toBe('function');
   });

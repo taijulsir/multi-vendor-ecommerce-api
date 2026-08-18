@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiConflictResponse,
@@ -45,7 +53,7 @@ export class ShopsController {
   @ApiOperation({
     summary: "Create the authenticated vendor's shop",
     description:
-      'Creates a shop for the caller\'s own Vendor profile. `vendorId` ' +
+      "Creates a shop for the caller's own Vendor profile. `vendorId` " +
       'is always resolved server-side from the access token — the ' +
       'request body cannot specify whose shop this is. A vendor may ' +
       'have at most one shop (docs/database/vendor-shop.md §12).',

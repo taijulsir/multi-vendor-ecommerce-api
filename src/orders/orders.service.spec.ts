@@ -88,7 +88,7 @@ describe('OrdersService', () => {
       expect(authorizationService.hasRole).not.toHaveBeenCalled();
     });
 
-    it("rejects (403) an order belonging to another user", async () => {
+    it('rejects (403) an order belonging to another user', async () => {
       prisma.masterOrder.findUnique.mockResolvedValue(
         makeOrder({ userId: 'someone-else-uuid' }),
       );

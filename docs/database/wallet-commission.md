@@ -1636,8 +1636,8 @@ Idempotency requirements             APPROVED
 Refund financial boundary            APPROVED
 Security requirements                APPROVED
 
-Prisma models                        NOT IMPLEMENTED
-Database migration                   NOT CREATED
+Prisma models                        IMPLEMENTED (schema only — no application layer)
+Database migration                   CREATED
 Wallet APIs                          NOT IMPLEMENTED
 Commission service                   NOT IMPLEMENTED
 Settlement service                   NOT IMPLEMENTED

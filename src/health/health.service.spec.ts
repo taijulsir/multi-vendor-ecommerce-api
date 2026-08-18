@@ -20,10 +20,7 @@ describe('HealthService', () => {
 
     redis.getClient.mockReturnValue(redisClient);
 
-    service = new HealthService(
-      prisma as any,
-      redis as any,
-    );
+    service = new HealthService(prisma as any, redis as any);
   });
 
   it('should return healthy status when database and redis are available', async () => {

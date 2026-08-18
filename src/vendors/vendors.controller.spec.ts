@@ -37,10 +37,7 @@ describe('VendorsController', () => {
 
       await controller.create(user, dto);
 
-      expect(vendorsService.createForUser).toHaveBeenCalledWith(
-        user.id,
-        dto,
-      );
+      expect(vendorsService.createForUser).toHaveBeenCalledWith(user.id, dto);
       expect(vendorsService.createForUser).toHaveBeenCalledTimes(1);
     });
   });

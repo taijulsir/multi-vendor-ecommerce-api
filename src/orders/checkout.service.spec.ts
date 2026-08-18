@@ -95,7 +95,9 @@ describe('CheckoutService', () => {
     ...overrides,
   });
 
-  const makeMasterOrder = (overrides: Partial<Record<string, unknown>> = {}) => ({
+  const makeMasterOrder = (
+    overrides: Partial<Record<string, unknown>> = {},
+  ) => ({
     id: 'master-order-uuid',
     orderNumber: 'ORD-2026-ABCDEF012345',
     userId: 'user-uuid',
@@ -203,7 +205,7 @@ describe('CheckoutService', () => {
         }),
       );
 
-      const result = await service.checkout('user-uuid', dto as any);
+      const result = await service.checkout('user-uuid', dto);
 
       expect(tx.cart.updateMany).toHaveBeenCalledWith({
         where: { id: 'cart-uuid', status: 'ACTIVE' },
@@ -238,9 +240,19 @@ describe('CheckoutService', () => {
     });
 
     it('groups items into one VendorOrder per distinct vendor for a multi-vendor cart', async () => {
-      const itemA = makeCartItem({ id: 'item-a', variantId: 'variant-a', quantity: 1 });
-      const itemB = makeCartItem({ id: 'item-b', variantId: 'variant-b', quantity: 3 });
-      prisma.cart.findFirst.mockResolvedValue(makeCart({ items: [itemA, itemB] }));
+      const itemA = makeCartItem({
+        id: 'item-a',
+        variantId: 'variant-a',
+        quantity: 1,
+      });
+      const itemB = makeCartItem({
+        id: 'item-b',
+        variantId: 'variant-b',
+        quantity: 3,
+      });
+      prisma.cart.findFirst.mockResolvedValue(
+        makeCart({ items: [itemA, itemB] }),
+      );
 
       const variantA = makeVariant({
         id: 'variant-a',
@@ -275,7 +287,7 @@ describe('CheckoutService', () => {
       tx.orderItem.create.mockResolvedValue({ id: 'order-item-uuid' });
       tx.masterOrder.findUniqueOrThrow.mockResolvedValue(makeMasterOrder());
 
-      await service.checkout('user-uuid', dto as any);
+      await service.checkout('user-uuid', dto);
 
       expect(tx.vendorOrder.create).toHaveBeenCalledTimes(2);
       expect(tx.orderItem.create).toHaveBeenCalledTimes(2);
@@ -289,7 +301,7 @@ describe('CheckoutService', () => {
       tx.orderItem.create.mockResolvedValue({ id: 'order-item-uuid' });
       tx.masterOrder.findUniqueOrThrow.mockResolvedValue(makeMasterOrder());
 
-      await service.checkout('user-uuid', dto as any);
+      await service.checkout('user-uuid', dto);
 
       expect(tx.masterOrder.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -305,7 +317,7 @@ describe('CheckoutService', () => {
       );
     });
 
-    it("never uses anything but the authenticated userId parameter as order ownership, even if the dto carried a spoofed field", async () => {
+    it('never uses anything but the authenticated userId parameter as order ownership, even if the dto carried a spoofed field', async () => {
       prisma.cart.findFirst.mockResolvedValue(makeCart());
       prisma.productVariant.findMany.mockResolvedValue([makeVariant()]);
       tx.masterOrder.create.mockResolvedValue(makeMasterOrder());
@@ -315,7 +327,8 @@ describe('CheckoutService', () => {
 
       await service.checkout('authenticated-user-uuid', {
         ...dto,
-        // @ts-expect-error intentionally simulating a spoofed field
+        // Intentionally simulating a spoofed field; `as any` below
+        // covers the type mismatch for this whole literal.
         userId: 'spoofed-user-uuid',
       } as any);
 
@@ -442,7 +455,9 @@ describe('CheckoutService', () => {
         makeCart({ items: [makeCartItem({ quantity: 10 })] }),
       );
       prisma.productVariant.findMany.mockResolvedValue([
-        makeVariant({ inventory: { id: 'inventory-uuid', onHand: 10, reserved: 5 } }),
+        makeVariant({
+          inventory: { id: 'inventory-uuid', onHand: 10, reserved: 5 },
+        }),
       ]);
 
       await expect(

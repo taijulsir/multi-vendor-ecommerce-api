@@ -1,4 +1,8 @@
-import { ExecutionContext, ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import {
+  ExecutionContext,
+  ForbiddenException,
+  UnauthorizedException,
+} from '@nestjs/common';
 
 import { AuthorizationGuard } from './authorization.guard';
 import type { SafeUser } from '../utils/safe-user';
@@ -30,9 +34,7 @@ describe('AuthorizationGuard', () => {
     deletedAt: null,
   };
 
-  const buildContext = (
-    requestUser: SafeUser | undefined,
-  ): ExecutionContext =>
+  const buildContext = (requestUser: SafeUser | undefined): ExecutionContext =>
     ({
       getHandler: () => function handler() {},
       getClass: () => class TestController {},
@@ -71,9 +73,7 @@ describe('AuthorizationGuard', () => {
       );
       authorizationService.hasRole.mockResolvedValue(true);
 
-      await expect(guard.canActivate(buildContext(user))).resolves.toBe(
-        true,
-      );
+      await expect(guard.canActivate(buildContext(user))).resolves.toBe(true);
       expect(authorizationService.hasRole).toHaveBeenCalledWith(
         user.id,
         'ADMIN',
@@ -86,9 +86,9 @@ describe('AuthorizationGuard', () => {
       );
       authorizationService.hasRole.mockResolvedValue(false);
 
-      await expect(guard.canActivate(buildContext(user))).rejects.toBeInstanceOf(
-        ForbiddenException,
-      );
+      await expect(
+        guard.canActivate(buildContext(user)),
+      ).rejects.toBeInstanceOf(ForbiddenException);
     });
 
     it('allows with multiple roles when the user has at least one (OR semantics)', async () => {
@@ -99,9 +99,7 @@ describe('AuthorizationGuard', () => {
         async (_userId: string, role: string) => role === 'VENDOR',
       );
 
-      await expect(guard.canActivate(buildContext(user))).resolves.toBe(
-        true,
-      );
+      await expect(guard.canActivate(buildContext(user))).resolves.toBe(true);
       expect(authorizationService.hasRole).toHaveBeenCalledWith(
         user.id,
         'ADMIN',
@@ -118,9 +116,9 @@ describe('AuthorizationGuard', () => {
       );
       authorizationService.hasRole.mockResolvedValue(false);
 
-      await expect(guard.canActivate(buildContext(user))).rejects.toBeInstanceOf(
-        ForbiddenException,
-      );
+      await expect(
+        guard.canActivate(buildContext(user)),
+      ).rejects.toBeInstanceOf(ForbiddenException);
     });
   });
 
@@ -133,9 +131,7 @@ describe('AuthorizationGuard', () => {
       );
       authorizationService.hasPermission.mockResolvedValue(true);
 
-      await expect(guard.canActivate(buildContext(user))).resolves.toBe(
-        true,
-      );
+      await expect(guard.canActivate(buildContext(user))).resolves.toBe(true);
       expect(authorizationService.hasPermission).toHaveBeenCalledWith(
         user.id,
         'products',
@@ -151,9 +147,9 @@ describe('AuthorizationGuard', () => {
       );
       authorizationService.hasPermission.mockResolvedValue(false);
 
-      await expect(guard.canActivate(buildContext(user))).rejects.toBeInstanceOf(
-        ForbiddenException,
-      );
+      await expect(
+        guard.canActivate(buildContext(user)),
+      ).rejects.toBeInstanceOf(ForbiddenException);
     });
 
     it('requires every permission when multiple are declared (AND semantics)', async () => {
@@ -169,9 +165,9 @@ describe('AuthorizationGuard', () => {
         async (_userId: string, resource: string) => resource === 'products',
       );
 
-      await expect(guard.canActivate(buildContext(user))).rejects.toBeInstanceOf(
-        ForbiddenException,
-      );
+      await expect(
+        guard.canActivate(buildContext(user)),
+      ).rejects.toBeInstanceOf(ForbiddenException);
     });
 
     it('allows when the user has every declared permission', async () => {
@@ -185,9 +181,7 @@ describe('AuthorizationGuard', () => {
       );
       authorizationService.hasPermission.mockResolvedValue(true);
 
-      await expect(guard.canActivate(buildContext(user))).resolves.toBe(
-        true,
-      );
+      await expect(guard.canActivate(buildContext(user))).resolves.toBe(true);
     });
   });
 
@@ -203,9 +197,9 @@ describe('AuthorizationGuard', () => {
       authorizationService.hasRole.mockResolvedValue(true);
       authorizationService.hasPermission.mockResolvedValue(false);
 
-      await expect(guard.canActivate(buildContext(user))).rejects.toBeInstanceOf(
-        ForbiddenException,
-      );
+      await expect(
+        guard.canActivate(buildContext(user)),
+      ).rejects.toBeInstanceOf(ForbiddenException);
     });
 
     it('requires both when both are declared (AND) — permission satisfied, role not', async () => {
@@ -219,9 +213,9 @@ describe('AuthorizationGuard', () => {
       authorizationService.hasRole.mockResolvedValue(false);
       authorizationService.hasPermission.mockResolvedValue(true);
 
-      await expect(guard.canActivate(buildContext(user))).rejects.toBeInstanceOf(
-        ForbiddenException,
-      );
+      await expect(
+        guard.canActivate(buildContext(user)),
+      ).rejects.toBeInstanceOf(ForbiddenException);
     });
 
     it('allows only when both the role and the permission are satisfied', async () => {
@@ -235,9 +229,7 @@ describe('AuthorizationGuard', () => {
       authorizationService.hasRole.mockResolvedValue(true);
       authorizationService.hasPermission.mockResolvedValue(true);
 
-      await expect(guard.canActivate(buildContext(user))).resolves.toBe(
-        true,
-      );
+      await expect(guard.canActivate(buildContext(user))).resolves.toBe(true);
     });
   });
 

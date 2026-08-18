@@ -33,9 +33,7 @@ describe('VendorOrdersController', () => {
     const orders = [{ id: 'vendor-order-uuid' }];
     vendorOrdersService.findMyVendorOrders.mockResolvedValue(orders);
 
-    await expect(controller.findMyVendorOrders(user)).resolves.toEqual(
-      orders,
-    );
+    await expect(controller.findMyVendorOrders(user)).resolves.toEqual(orders);
     expect(vendorOrdersService.findMyVendorOrders).toHaveBeenCalledWith(
       user.id,
     );

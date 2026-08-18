@@ -464,7 +464,9 @@ describe('Catalog API (e2e)', () => {
       it('returns 404 for a DRAFT product (not published, not disclosed to the public)', async () => {
         // productB was created without an explicit status, defaulting DRAFT.
         await request(app.getHttpServer())
-          .get(`/api/products/slug/${(await prisma.product.findUniqueOrThrow({ where: { id: productBId } })).slug}`)
+          .get(
+            `/api/products/slug/${(await prisma.product.findUniqueOrThrow({ where: { id: productBId } })).slug}`,
+          )
           .expect(404);
       });
     });
