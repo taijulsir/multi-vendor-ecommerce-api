@@ -1421,22 +1421,57 @@ Gateway boundary                     APPROVED
 Security requirements                APPROVED
 Reconciliation boundary              APPROVED
 
-Prisma models                        NOT IMPLEMENTED
-Database migration                   NOT CREATED
-Payment APIs                         NOT IMPLEMENTED
-Gateway integration                  NOT IMPLEMENTED
-Webhook handlers                     NOT IMPLEMENTED
-Refund APIs                           NOT IMPLEMENTED
+Prisma models                        IMPLEMENTED
+Database migration                   CREATED
+Payment APIs                         IMPLEMENTED (Phase 15 — foundation)
+Gateway integration                  NOT IMPLEMENTED (intentional — see note)
+Webhook handlers                     IMPLEMENTED (Phase 15 — foundation, no signature verification)
+Refund APIs                           IMPLEMENTED (Phase 15 — ADMIN-only foundation)
 Redis integration                    NOT IMPLEMENTED
 BullMQ integration                   NOT IMPLEMENTED
-Tests                                 NOT IMPLEMENTED
+Tests                                 IMPLEMENTED (Phase 15)
 ```
 
-> This document defines the initial Payment and Refund architecture.
-> Prisma models, migrations, payment gateway integrations, webhook
-> handlers, refund workflows, Redis/BullMQ processing, reconciliation,
-> services, APIs, and tests will be implemented after the database
-> architecture has been finalized.
+> Phase 15 implemented the Payment/PaymentAttempt/Webhook/Refund
+> *foundation* (`src/payments/`) — `POST /api/payments` (create, one per
+> order, first attempt auto-created), `POST /api/payments/:id/retry`
+> (new attempt on a FAILED payment only, §26), `GET /api/payments/:id`
+> (owner or ADMIN), `POST /api/payments/webhook` (unauthenticated,
+> idempotent via the existing `UNIQUE(provider, eventId)` constraint —
+> no separate idempotency table), and `POST /api/payments/:id/refunds`
+> (ADMIN-only, amount bounded by `paidAmount - refundedAmount`, §34).
+>
+> **No real gateway is integrated, by design** — `Payment.provider` is
+> always the internal placeholder `'MANUAL'`, and
+> `PaymentAttempt.providerReference`/`Refund.providerReference` are
+> generated internally rather than returned by a real processor. The
+> webhook endpoint accepts a generic event shape matching
+> `PaymentWebhookEvent`'s own documented fields rather than any specific
+> gateway's payload format, and recognizes only a small, explicitly
+> chosen vocabulary this foundation defines itself
+> (`payment.succeeded`/`payment.failed`/`refund.succeeded`/
+> `refund.failed`) — anything else is recorded and marked `IGNORED`, not
+> rejected.
+>
+> **Signature verification is explicitly NOT implemented.** §22 requires
+> it in principle, but ties the exact mechanism to "the provider," which
+> is undefined here — inventing one would mean inventing which gateway
+> is being simulated, which this phase's instructions explicitly forbid.
+> This is a real, known gap in the webhook endpoint's security, not an
+> oversight; see `docs/architecture.md`'s Phase 15 note.
+>
+> **Order-status boundary**: only `MasterOrder.paymentStatus` is synced
+> on payment/refund outcomes (§24) — `MasterOrder.status` (fulfillment
+> lifecycle) is never touched by this domain.
+>
+> **Refund is ADMIN-only** in this phase — no customer-facing
+> refund-request/approval workflow is documented anywhere in this file;
+> only administrative actor/audit language (`ADMIN_ADJUSTMENT`,
+> `requestedBy`) is. This is the resolved interpretation of a genuine
+> documentation gap, not an explicit rule.
+>
+> Not yet implemented: real gateway integration, webhook signature
+> verification, Redis/BullMQ processing, and reconciliation.
 
 The Payment domain is the authoritative application-level representation
 of payment processing, while external payment gateways remain the

@@ -1156,6 +1156,21 @@ SELECT-then-check-then-UPDATE sequence — see
 `docs/database/catalog.md` §47's explicit warning against the latter.
 This requires no distributed lock and no Redis.
 
+## Payment Transaction Boundary (implemented, Phase 15)
+
+`PaymentsService`/`WebhooksService` (`src/payments/`) each wrap exactly
+the writes that must be atomic: creating a `Payment` + its first
+`PaymentAttempt` together (`createForUser`); creating a new
+`PaymentAttempt` + resetting `Payment.status` together (`retry`); and,
+per webhook event, updating the `PaymentAttempt`/`Payment`/
+`MasterOrder.paymentStatus` (or `Refund`/`Payment`/
+`MasterOrder.paymentStatus`) triple together
+(`WebhooksService.handlePaymentOutcome`/`handleRefundOutcome`). The
+`PaymentWebhookEvent` row itself is written *before* the transaction, as
+its own atomic idempotency check (see below) — if that insert conflicts,
+processing never starts. Ownership/ existence validation happens
+read-only before any transaction opens, same pattern as Checkout.
+
 ---
 
 # 26. Idempotency
@@ -1186,6 +1201,48 @@ described above: a retried or concurrent checkout request against the
 a narrower guarantee than full request-level idempotency — it does not,
 for example, deduplicate two genuinely separate checkout attempts built
 from two different carts with identical contents.
+
+## Webhook Idempotency (implemented, Phase 15)
+
+`PaymentWebhookEvent`'s existing `UNIQUE(provider, eventId)` constraint
+*is* the idempotency mechanism — no separate idempotency-key table was
+introduced (`docs/database/payment-refund.md` §21 names this constraint
+directly as the intended protection). `WebhooksService.processEvent`
+always attempts to `create` the event row first; a unique-constraint
+violation means this exact event was already received, and the
+associated state change (Payment/Attempt/Refund/MasterOrder update) is
+never re-applied — the request still returns 200 with
+`{ status: 'duplicate' }`, since a non-2xx response would only cause a
+real gateway to keep retrying.
+
+**Payment ownership (Phase 15):** `Payment` is reached through
+`MasterOrder`, which is user-owned (the same pattern established for
+`MasterOrder` itself in Phase 14) — `PaymentsService` does not use
+`OwnershipService` or a vendor-ownership guard; it compares
+`payment.masterOrder.userId` to the authenticated caller directly, with
+an ADMIN bypass (`AuthorizationService.hasRole`) applied only to
+*viewing* (`findById`), not to creating or retrying another user's
+payment.
+
+**Refund consistency (Phase 15):** a refund amount is never accepted
+as authoritative — it is always validated against
+`payment.paidAmount - payment.refundedAmount`
+(`docs/database/payment-refund.md` §11/§34) both at creation (a
+"sanity" pre-check) and implicitly enforced again by how
+`refund.succeeded` recomputes `Payment.status`
+(`PARTIALLY_REFUNDED` vs. `REFUNDED`) from the actual cumulative
+`refundedAmount`, never from client input.
+
+**No gateway, no signature verification (Phase 15, explicit gap):**
+`docs/database/payment-refund.md` §22 requires webhook signature
+verification in principle, but ties the exact mechanism to "the
+provider" — undefined here, since this phase deliberately does not
+integrate a real gateway (Stripe/SSLCommerz/bKash/...). Inventing a
+signature scheme would mean inventing which gateway is being simulated.
+`POST /api/payments/webhook` is therefore unauthenticated with no
+signature check — a real, intentional, and documented security gap in
+this foundation, not an oversight, to be closed only once a specific
+provider is actually chosen and integrated.
 
 ---
 
