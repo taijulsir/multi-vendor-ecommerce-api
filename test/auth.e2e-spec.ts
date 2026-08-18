@@ -728,4 +728,244 @@ describe('Auth API (e2e)', () => {
       },
     );
   });
+
+  describe('RBAC (Roles & Permissions) — Phase 8', () => {
+    const password = 'StrongPassw0rd!';
+
+    // Fixture state, created in beforeAll and torn down in afterAll. No
+    // admin/role-management API is used (none exists in this phase, by
+    // design) — everything below is either the pre-existing Phase 1 seed
+    // data (ADMIN/CUSTOMER roles) or a test-local Prisma fixture, per
+    // task §11/§16.
+    let adminRoleId: string;
+    let customerRoleId: string;
+    let productsReadPermissionId: string;
+    let userA: { id: string; email: string; accessToken: string }; // ADMIN + products:read
+    let userB: { id: string; email: string; accessToken: string }; // CUSTOMER only
+
+    beforeAll(async () => {
+      const adminRole = await prisma.role.findUniqueOrThrow({
+        where: { name: 'ADMIN' },
+      });
+      const customerRole = await prisma.role.findUniqueOrThrow({
+        where: { name: 'CUSTOMER' },
+      });
+      adminRoleId = adminRole.id;
+      customerRoleId = customerRole.id;
+
+      // Fixture-only permission: created here, removed in afterAll.
+      const permission = await prisma.permission.upsert({
+        where: { resource_action: { resource: 'products', action: 'read' } },
+        update: {},
+        create: { resource: 'products', action: 'read' },
+      });
+      productsReadPermissionId = permission.id;
+
+      await prisma.rolePermission.upsert({
+        where: {
+          roleId_permissionId: {
+            roleId: adminRoleId,
+            permissionId: productsReadPermissionId,
+          },
+        },
+        update: {},
+        create: {
+          roleId: adminRoleId,
+          permissionId: productsReadPermissionId,
+        },
+      });
+
+      // User A: ADMIN role -> also inherits products:read through it.
+      const emailA = uniqueEmail();
+      registeredEmails.push(emailA);
+      await request(app.getHttpServer())
+        .post('/api/auth/register')
+        .send({ email: emailA, password, firstName: 'Admin' })
+        .expect(201);
+      const loginA = await request(app.getHttpServer())
+        .post('/api/auth/login')
+        .send({ email: emailA, password })
+        .expect(200);
+      await prisma.userRole.create({
+        data: { userId: loginA.body.id as string, roleId: adminRoleId },
+      });
+      userA = {
+        id: loginA.body.id as string,
+        email: emailA,
+        accessToken: loginA.body.accessToken as string,
+      };
+
+      // User B: CUSTOMER role only -> no products:read.
+      const emailB = uniqueEmail();
+      registeredEmails.push(emailB);
+      await request(app.getHttpServer())
+        .post('/api/auth/register')
+        .send({ email: emailB, password, firstName: 'Customer' })
+        .expect(201);
+      const loginB = await request(app.getHttpServer())
+        .post('/api/auth/login')
+        .send({ email: emailB, password })
+        .expect(200);
+      await prisma.userRole.create({
+        data: { userId: loginB.body.id as string, roleId: customerRoleId },
+      });
+      userB = {
+        id: loginB.body.id as string,
+        email: emailB,
+        accessToken: loginB.body.accessToken as string,
+      };
+    });
+
+    afterAll(async () => {
+      // UserRole rows for A/B cascade-delete with the users themselves
+      // (outer suite's afterAll, by email). The RolePermission link and
+      // the Permission row are NOT user-owned, so they're removed
+      // explicitly to avoid permanently altering the seeded ADMIN role
+      // or leaving a stray Permission row in the dev database.
+      await prisma.rolePermission.deleteMany({
+        where: { roleId: adminRoleId, permissionId: productsReadPermissionId },
+      });
+      await prisma.permission.deleteMany({
+        where: { resource: 'products', action: 'read' },
+      });
+    });
+
+    it('1. rejects a request with no access token with 401', async () => {
+      await request(app.getHttpServer())
+        .get('/api/auth/rbac-demo/role')
+        .expect(401);
+    });
+
+    it('2. allows a valid token on a route with no RBAC metadata (authentication alone is sufficient)', async () => {
+      await request(app.getHttpServer())
+        .get('/api/auth/me')
+        .set('Authorization', `Bearer ${userB.accessToken}`)
+        .expect(200);
+    });
+
+    it('3. allows User A (has ADMIN) through a route requiring the ADMIN role', async () => {
+      await request(app.getHttpServer())
+        .get('/api/auth/rbac-demo/role')
+        .set('Authorization', `Bearer ${userA.accessToken}`)
+        .expect(200);
+    });
+
+    it('4. forbids (403) User B (no ADMIN) on a route requiring the ADMIN role', async () => {
+      await request(app.getHttpServer())
+        .get('/api/auth/rbac-demo/role')
+        .set('Authorization', `Bearer ${userB.accessToken}`)
+        .expect(403);
+    });
+
+    it('5. allows User A (has products:read) through a route requiring that permission', async () => {
+      await request(app.getHttpServer())
+        .get('/api/auth/rbac-demo/permission')
+        .set('Authorization', `Bearer ${userA.accessToken}`)
+        .expect(200);
+    });
+
+    it('6. forbids (403) User B (no products:read) on a route requiring that permission', async () => {
+      await request(app.getHttpServer())
+        .get('/api/auth/rbac-demo/permission')
+        .set('Authorization', `Bearer ${userB.accessToken}`)
+        .expect(403);
+    });
+
+    it('7. multiple-role behavior is OR: User A satisfies @Roles(ADMIN, VENDOR) via ADMIN alone', async () => {
+      await request(app.getHttpServer())
+        .get('/api/auth/rbac-demo/roles-any')
+        .set('Authorization', `Bearer ${userA.accessToken}`)
+        .expect(200);
+
+      // User B has neither ADMIN nor VENDOR -> still forbidden.
+      await request(app.getHttpServer())
+        .get('/api/auth/rbac-demo/roles-any')
+        .set('Authorization', `Bearer ${userB.accessToken}`)
+        .expect(403);
+    });
+
+    it('8. multiple-permission behavior is AND: User A has products:read but not inventory:adjust, so is still forbidden', async () => {
+      // Proves AND, not OR: if it were OR, having just products:read
+      // would be enough and this would be a 200.
+      await request(app.getHttpServer())
+        .get('/api/auth/rbac-demo/permissions-all')
+        .set('Authorization', `Bearer ${userA.accessToken}`)
+        .expect(403);
+    });
+
+    it('9 & 10. role changes affect authorization live (no new JWT) — granting then removing a role', async () => {
+      // Before: User B has no ADMIN role.
+      await request(app.getHttpServer())
+        .get('/api/auth/rbac-demo/role')
+        .set('Authorization', `Bearer ${userB.accessToken}`)
+        .expect(403);
+
+      // Grant ADMIN directly via Prisma (no admin API exists) — using the
+      // SAME already-issued access token, not a new login/JWT.
+      await prisma.userRole.create({
+        data: { userId: userB.id, roleId: adminRoleId },
+      });
+
+      await request(app.getHttpServer())
+        .get('/api/auth/rbac-demo/role')
+        .set('Authorization', `Bearer ${userB.accessToken}`)
+        .expect(200);
+
+      // Remove the assignment again ("deleted role assignment") — access
+      // must be denied again, still with the same original access token.
+      await prisma.userRole.delete({
+        where: {
+          userId_roleId: { userId: userB.id, roleId: adminRoleId },
+        },
+      });
+
+      await request(app.getHttpServer())
+        .get('/api/auth/rbac-demo/role')
+        .set('Authorization', `Bearer ${userB.accessToken}`)
+        .expect(403);
+    });
+
+    it('11. a 403 authorization failure never exposes internal database details', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/api/auth/rbac-demo/role')
+        .set('Authorization', `Bearer ${userB.accessToken}`)
+        .expect(403);
+
+      const allowedKeys = ['statusCode', 'message', 'error'];
+      expect(Object.keys(response.body).sort()).toEqual(
+        [...allowedKeys].filter((key) => key in response.body).sort(),
+      );
+      for (const key of Object.keys(response.body)) {
+        expect(allowedKeys).toContain(key);
+      }
+
+      const serialized = JSON.stringify(response.body).toLowerCase();
+      expect(serialized).not.toContain('roleid');
+      expect(serialized).not.toContain('permissionid');
+      expect(serialized).not.toContain(adminRoleId.toLowerCase());
+      expect(serialized).not.toContain(productsReadPermissionId.toLowerCase());
+      expect(serialized).not.toMatch(/prisma|postgres|sql/);
+    });
+
+    it('demonstrates the role + permission combination requires both (AND)', async () => {
+      // User A has ADMIN and products:read -> both satisfied.
+      await request(app.getHttpServer())
+        .get('/api/auth/rbac-demo/role-and-permission')
+        .set('Authorization', `Bearer ${userA.accessToken}`)
+        .expect(200);
+
+      // User B has neither -> forbidden.
+      await request(app.getHttpServer())
+        .get('/api/auth/rbac-demo/role-and-permission')
+        .set('Authorization', `Bearer ${userB.accessToken}`)
+        .expect(403);
+    });
+
+    it('rejects an invalid access token with 401 on an RBAC-protected route', async () => {
+      await request(app.getHttpServer())
+        .get('/api/auth/rbac-demo/role')
+        .set('Authorization', 'Bearer not-a-jwt-token')
+        .expect(401);
+    });
+  });
 });

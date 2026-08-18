@@ -7,6 +7,8 @@ import type { StringValue } from 'ms';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { AuthorizationService } from './authorization/authorization.service';
+import { AuthorizationGuard } from './guards/authorization.guard';
 import { PasswordService } from './password/password.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { RefreshTokenService } from './token/refresh-token.service';
@@ -30,7 +32,20 @@ import { RefreshTokenService } from './token/refresh-token.service';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, PasswordService, JwtStrategy, RefreshTokenService],
-  exports: [AuthService, PasswordService, RefreshTokenService],
+  providers: [
+    AuthService,
+    PasswordService,
+    JwtStrategy,
+    RefreshTokenService,
+    AuthorizationService,
+    AuthorizationGuard,
+  ],
+  exports: [
+    AuthService,
+    PasswordService,
+    RefreshTokenService,
+    AuthorizationService,
+    AuthorizationGuard,
+  ],
 })
 export class AuthModule {}

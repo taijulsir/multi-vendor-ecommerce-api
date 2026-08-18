@@ -877,6 +877,59 @@ Permissions:
 
 The exact permission list will be defined during the Identity & Access implementation phase.
 
+## Authentication vs. Authorization (implemented)
+
+Strictly separated, per §21: `JwtAuthGuard` answers "who is this user?" and
+never checks roles/permissions. `AuthorizationGuard` answers "is this
+authenticated user allowed to do this?" and never verifies a token — it
+trusts `req.user` exactly as `JwtAuthGuard` (which always runs first in
+the guard chain) already established it. Neither guard duplicates the
+other's responsibility.
+
+## Role / Permission Resolution (implemented)
+
+A dedicated `AuthorizationService` (`src/auth/authorization/`) is the only
+place RBAC queries are written — guards, decorators, and controllers never
+query Prisma for roles/permissions directly. It walks the existing
+`User → UserRole → Role → RolePermission → Permission` tables on every
+call: `getUserRoles`, `getUserPermissions`, `hasRole`,
+`hasPermission(resource, action)`. Permissions use the exact
+`{ resource, action }` shape the `Permission` model already defines — no
+second/colon-string syntax was introduced.
+
+## Declaring requirements: `@Roles()` / `@Permissions()`
+
+Route-level metadata only (`SetMetadata`); `AuthorizationGuard` reads it
+via `Reflector` and enforces it. A route with neither decorator requires
+authentication only.
+
+## Combination semantics (implemented; not previously specified by this document)
+
+- Multiple roles in one `@Roles(a, b)` → **OR** — any one of them is
+  sufficient (matches the conventional RBAC interpretation: roles are
+  alternative sufficient identities for an action).
+- Multiple permissions in one `@Permissions(a, b)` → **AND** — all of
+  them are required (permissions are treated as individually necessary
+  capabilities for a composite action).
+- `@Roles()` and `@Permissions()` both present on the same route →
+  **AND** — both checks must independently pass. Decorators are additive
+  constraints, not alternative paths.
+
+## 401 vs. 403
+
+No/invalid/expired access token → `401 Unauthorized` (from
+`JwtAuthGuard`). Valid, authenticated identity but an unmet role/permission
+requirement → `403 Forbidden` (from `AuthorizationGuard`), with a single
+generic message — never a role ID, permission ID, or any database detail.
+
+## Live database state, not JWT claims
+
+Roles and permissions are **not** embedded in the access token (the
+payload stays `{ sub: user.id }`, unchanged since Phase 3). Every
+authorization check re-reads current database state, so granting,
+changing, or revoking a role/permission takes effect on the very next
+request — no re-login or new token required.
+
 ---
 
 # 23. Resource Ownership
