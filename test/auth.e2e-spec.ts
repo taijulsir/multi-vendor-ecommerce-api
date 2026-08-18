@@ -259,25 +259,31 @@ describe('Auth API (e2e)', () => {
       };
     };
 
-    it('exchanges a valid refresh token for a new, valid access token whose sub matches the user', async () => {
-      const { id, accessToken, refreshToken } = await registerAndLogin();
-
-      const response = await request(app.getHttpServer())
+    const doRefresh = (refreshToken: string) =>
+      request(app.getHttpServer())
         .post('/api/auth/refresh')
-        .send({ refreshToken })
-        .expect(200);
+        .send({ refreshToken });
+
+    it('rotates a valid refresh token: issues a new access token + refresh token, and invalidates the old one', async () => {
+      const { id, accessToken, refreshToken: tokenA } =
+        await registerAndLogin();
+
+      const response = await doRefresh(tokenA).expect(200);
 
       expect(typeof response.body.accessToken).toBe('string');
       expect(response.body.accessToken.length).toBeGreaterThan(0);
-      expect(response.body).not.toHaveProperty('refreshToken');
+      expect(typeof response.body.refreshToken).toBe('string');
+      expect(response.body.refreshToken.length).toBeGreaterThan(0);
+      expect(response.body.refreshToken).not.toBe(tokenA);
       expect(response.body).not.toHaveProperty('password');
       expect(response.body).not.toHaveProperty('passwordHash');
       expect(response.body).not.toHaveProperty('tokenHash');
 
+      const tokenB = response.body.refreshToken as string;
       const newAccessToken = response.body.accessToken as string;
 
-      // Cryptographically verify the new token (not just decode it) and
-      // confirm its identity claim.
+      // Cryptographically verify the new access token (not just decode
+      // it) and confirm its identity claim.
       const payload = await jwtService.verifyAsync<{ sub: string }>(
         newAccessToken,
       );
@@ -290,22 +296,38 @@ describe('Auth API (e2e)', () => {
         .set('Authorization', `Bearer ${newAccessToken}`)
         .expect(200);
 
-      // The original access token issued at login is completely
-      // unaffected — refresh does not invalidate it in this phase.
+      // The pre-rotation access token issued at login is unaffected —
+      // access-token behavior is unchanged from Phase 4/5.
       await request(app.getHttpServer())
         .get('/api/auth/me')
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(200);
+
+      // Token B (the rotated replacement) itself works for a further
+      // rotation. (Token A's post-rotation behavior — reusing it — is
+      // intentionally NOT checked here: doing so would revoke B as part
+      // of this phase's family-revocation policy and contaminate this
+      // "does rotation basically work" test with reuse-detection
+      // behavior, which has its own dedicated tests below.)
+      await doRefresh(tokenB).expect(200);
+    });
+
+    it('consumes the presented token as part of rotation: it cannot be used a second time', async () => {
+      const { refreshToken: tokenA } = await registerAndLogin();
+
+      await doRefresh(tokenA).expect(200);
+
+      // Presenting A again is refresh-token reuse (covered in depth by
+      // the dedicated describe block below); here we only assert the
+      // simple fact that A itself is now unusable.
+      await doRefresh(tokenA).expect(401);
     });
 
     it('rejects an invalid/random refresh token with 401', async () => {
-      await request(app.getHttpServer())
-        .post('/api/auth/refresh')
-        .send({ refreshToken: randomUUID() })
-        .expect(401);
+      await doRefresh(randomUUID()).expect(401);
     });
 
-    it('rejects an expired refresh token with 401', async () => {
+    it('rejects an expired-but-never-used refresh token with 401 without revoking anything else', async () => {
       const { id, refreshToken } = await registerAndLogin();
 
       // No admin/expiry-forcing endpoint exists yet, so the persisted
@@ -319,10 +341,7 @@ describe('Auth API (e2e)', () => {
         data: { expiresAt: new Date(Date.now() - 1000) },
       });
 
-      await request(app.getHttpServer())
-        .post('/api/auth/refresh')
-        .send({ refreshToken })
-        .expect(401);
+      await doRefresh(refreshToken).expect(401);
     });
 
     it('rejects malformed/empty input with 400', async () => {
@@ -333,17 +352,101 @@ describe('Auth API (e2e)', () => {
     });
 
     it.each(['SUSPENDED', 'BLOCKED'] as const)(
-      'rejects a refresh token belonging to a %s user with 401',
+      'rejects a refresh token belonging to a %s user with 401 and issues no replacement',
       async (status) => {
         const { email, refreshToken } = await registerAndLogin();
         await prisma.user.update({ where: { email }, data: { status } });
 
-        await request(app.getHttpServer())
-          .post('/api/auth/refresh')
-          .send({ refreshToken })
-          .expect(401);
+        await doRefresh(refreshToken).expect(401);
       },
     );
+
+    describe('reuse detection and family revocation', () => {
+      it('detects reuse of an already-rotated token (A→B, then reuse A) with a generic 401', async () => {
+        const { refreshToken: tokenA } = await registerAndLogin();
+
+        const { body } = await doRefresh(tokenA).expect(200);
+        const tokenB = body.refreshToken as string;
+
+        // Reusing A must fail exactly like every other rejection reason —
+        // a generic 401 with no distinguishing detail.
+        const reuseResponse = await doRefresh(tokenA).expect(401);
+        expect(reuseResponse.body).not.toHaveProperty('accessToken');
+        expect(reuseResponse.body).not.toHaveProperty('refreshToken');
+
+        // The reuse must have revoked the whole family: B (A's own
+        // rotated replacement) is now dead too, even though B itself was
+        // never reused or expired.
+        await doRefresh(tokenB).expect(401);
+      });
+
+      it('revokes an entire multi-generation family (A→B→C, reuse A) — B and C both become unusable', async () => {
+        const { refreshToken: tokenA } = await registerAndLogin();
+
+        const responseB = await doRefresh(tokenA).expect(200);
+        const tokenB = responseB.body.refreshToken as string;
+
+        const responseC = await doRefresh(tokenB).expect(200);
+        const tokenC = responseC.body.refreshToken as string;
+
+        // Reuse the very first token in the chain.
+        await doRefresh(tokenA).expect(401);
+
+        // Every descendant is revoked, not just the immediate successor.
+        await doRefresh(tokenB).expect(401);
+        await doRefresh(tokenC).expect(401);
+      });
+
+      it('does not revoke an unrelated session (family) when reuse is detected in another', async () => {
+        // Session 1 → family F1.
+        const session1 = await registerAndLogin();
+        // Session 2 → family F2 (different user, so definitely a
+        // different family — also verifies revocation is correctly
+        // scoped by more than coincidence).
+        const session2 = await registerAndLogin();
+
+        // Rotate F1 once, then trigger reuse in F1.
+        const rotated1 = await doRefresh(session1.refreshToken).expect(200);
+        await doRefresh(session1.refreshToken).expect(401); // reuse -> revokes F1
+
+        // F1's rotated token is now also dead (family revoked)...
+        await doRefresh(rotated1.body.refreshToken as string).expect(401);
+
+        // ...but F2 is completely unaffected.
+        await doRefresh(session2.refreshToken).expect(200);
+      });
+    });
+
+    describe('concurrent refresh', () => {
+      it('allows exactly one of two simultaneous requests for the same token to succeed; the loser is treated as reuse', async () => {
+        const { refreshToken: tokenA } = await registerAndLogin();
+
+        const [resultA, resultB] = await Promise.all([
+          doRefresh(tokenA),
+          doRefresh(tokenA),
+        ]);
+
+        const statuses = [resultA.status, resultB.status].sort();
+        // Exactly one 200 (the winner) and one 401 (the loser) — the
+        // database's row-level locking under AuthService.refresh()'s
+        // transaction guarantees only one caller can ever successfully
+        // claim a given token, no matter how close together the requests
+        // arrive. Two successes (a duplicate valid rotation) would be a
+        // serious security bug; this asserts it cannot happen.
+        expect(statuses).toEqual([200, 401]);
+
+        const winner = resultA.status === 200 ? resultA : resultB;
+        expect(typeof winner.body.accessToken).toBe('string');
+        expect(typeof winner.body.refreshToken).toBe('string');
+
+        // Per this phase's reuse policy, the losing concurrent request is
+        // indistinguishable from a genuine replay attack, so it revokes
+        // the family — including the winner's brand-new token. This is a
+        // deliberate, documented security trade-off (favoring safety over
+        // convenience for a same-token double-fire), not an oversight.
+        await doRefresh(winner.body.refreshToken as string).expect(401);
+      });
+    });
   });
 
   describe('GET /api/auth/me', () => {

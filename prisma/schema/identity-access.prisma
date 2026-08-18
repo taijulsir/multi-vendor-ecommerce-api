@@ -81,23 +81,32 @@ model RolePermission {
 /// NOT part of the approved Identity & Access architecture
 /// (docs/database/identity-access.md lists `RefreshToken` under "Future
 /// Extensions", and docs/plans/database-implementation-plan.md's deferred
-/// list agrees). Added now, minimally, because Phase 5 of the
-/// application-layer auth work requires persisted refresh tokens and no
-/// prior model/fields exist to reuse — see that phase's final report for
-/// the full design rationale. Deliberately excludes any
-/// rotation/revocation fields; those remain out of scope until an
-/// explicit later phase defines that policy.
+/// list agrees). Added minimally in Phase 5 for persisted refresh tokens;
+/// extended minimally in Phase 6 (`familyId`, `revokedAt`) to support
+/// rotation + reuse detection — see that phase's final report for the
+/// full design rationale. `familyId` is a plain grouping value (not a
+/// separate TokenFamily table/FK): every token descended from one login
+/// shares the same value, generated fresh only at login. `revokedAt`
+/// serves double duty as "consumed by rotation" and "revoked because
+/// reuse was detected in this family" — both mean the same thing to a
+/// caller (this token can never be used again), so one field is enough;
+/// a `replacedBy`-style audit trail was deliberately not added since
+/// nothing in this phase's algorithm needs to walk the chain, only to
+/// know a token's own revoked state and its family.
 model RefreshToken {
-  id        String   @id @default(uuid(7)) @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  tokenHash String   @unique @map("token_hash")
-  expiresAt DateTime @map("expires_at")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id        String    @id @default(uuid(7)) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  familyId  String    @default(uuid(7)) @map("family_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([expiresAt])
+  @@index([familyId, revokedAt])
   @@map("refresh_tokens")
 }

@@ -25,8 +25,20 @@ export type LoginResult = SafeUser & {
   refreshToken: string;
 };
 
-/** Refresh response: a new access token only — no rotation in this phase. */
-export type RefreshResult = { accessToken: string };
+/** Refresh response: a new access token AND a new (rotated) refresh token. */
+export type RefreshResult = { accessToken: string; refreshToken: string };
+
+/**
+ * Internal outcome of an attempted rotation, decided entirely inside the
+ * DB transaction in `refresh()`. Returned rather than thrown from the
+ * transaction callback so that "this token is invalid" (unknown, expired,
+ * reused, or status-rejected) is a single, uniform branch handled once,
+ * outside the transaction — this is what guarantees the public response
+ * never differs by reason (see `refresh()`).
+ */
+type RotationOutcome =
+  | { kind: 'success'; accessToken: string; refreshToken: string }
+  | { kind: 'invalid' };
 
 const PRISMA_UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
 
@@ -160,42 +172,110 @@ export class AuthService {
   }
 
   /**
-   * Exchanges a still-valid refresh token for a new access token.
+   * Rotates a refresh token: exchanges it for a new access token AND a
+   * new refresh token, invalidating the presented one in the same
+   * transaction. See docs/architecture.md §18 ("uses rotation") — this is
+   * the rotation implementation deferred out of Phase 5.
    *
-   * Deliberately does NOT issue a new refresh token or invalidate the
-   * presented one — rotation and reuse detection are out of scope for
-   * this phase (see the final report). The same refresh token therefore
-   * remains usable, unchanged, until it expires.
+   * Concurrency / atomicity strategy (task requirements §4–5):
+   *
+   * The "claim" step is a single conditional `updateMany` —
+   * `WHERE tokenHash = ? AND revokedAt IS NULL AND expiresAt > now()` —
+   * which is atomic at the database level (Postgres row-lock semantics
+   * under READ COMMITTED). If two requests present the same token
+   * concurrently, only one can affect a row; the other's `updateMany`
+   * necessarily observes `count === 0` once the first has committed,
+   * because both run inside a *transaction* and the row lock forces the
+   * second to wait for the first to finish before its own WHERE clause is
+   * (re-)evaluated. That loser is therefore treated exactly like any
+   * other presentation of an already-consumed token: reuse.
+   *
+   * The claim and the new token's creation happen in the SAME
+   * `$transaction`, so a failure between them (JWT signing, DB error)
+   * rolls back the claim too — the old token is never left revoked
+   * without a replacement having actually been created (task §4).
    */
   async refresh(dto: RefreshTokenDto): Promise<RefreshResult> {
     const tokenHash = this.refreshTokenService.hash(dto.refreshToken);
 
-    const record = await this.prisma.refreshToken.findUnique({
-      where: { tokenHash },
-      include: { user: true },
-    });
+    const outcome: RotationOutcome = await this.prisma.$transaction(
+      async (tx) => {
+        const now = new Date();
 
-    // Unknown token, expired token, and (defensively) a token whose user
-    // relation somehow doesn't resolve are all indistinguishable to the
-    // caller — same generic error, same principle as login().
-    if (!record || record.expiresAt.getTime() <= Date.now() || !record.user) {
+        const claim = await tx.refreshToken.updateMany({
+          where: { tokenHash, revokedAt: null, expiresAt: { gt: now } },
+          data: { revokedAt: now },
+        });
+
+        if (claim.count === 0) {
+          // We did not win (or there was nothing to win). Distinguish
+          // "already consumed/revoked" (reuse) from "unknown token" or
+          // "merely expired, never used" (neither is reuse) only to
+          // decide whether a family exists to revoke — the caller-facing
+          // outcome is identical in all three cases.
+          const existing = await tx.refreshToken.findUnique({
+            where: { tokenHash },
+          });
+
+          if (existing && existing.revokedAt !== null) {
+            // Reuse detected: this exact token was already consumed by
+            // an earlier (or, under the race above, a concurrently
+            // winning) request. Revoke every still-active token in the
+            // family — including ones from later rotations — so the
+            // entire chain descended from the compromised/replayed token
+            // stops working, per task §6–7. Scoped strictly to this
+            // family's ID, so unrelated users/sessions are untouched.
+            await tx.refreshToken.updateMany({
+              where: { familyId: existing.familyId, revokedAt: null },
+              data: { revokedAt: now },
+            });
+          }
+
+          return { kind: 'invalid' };
+        }
+
+        // We atomically won the right to consume this token — fetch what
+        // rotation needs. (`expiresAt`/`revokedAt` are already validated
+        // by the WHERE clause above; no need to re-check them.)
+        const record = await tx.refreshToken.findUniqueOrThrow({
+          where: { tokenHash },
+          include: { user: true },
+        });
+
+        // Reuses the exact same status policy as login/JwtStrategy — see
+        // isAuthenticatable(). Presented as a uniform 401 rather than
+        // login's 403, matching JwtStrategy's precedent (this is
+        // "continuing a session," not a fresh authentication attempt).
+        // The token was already revoked by the claim above and is
+        // intentionally NOT replaced — a suspended/blocked account must
+        // not receive a new refresh token either (task §9).
+        if (!isAuthenticatable(record.user.status)) {
+          return { kind: 'invalid' };
+        }
+
+        const rawRefreshToken = this.refreshTokenService.generate();
+
+        await tx.refreshToken.create({
+          data: {
+            userId: record.user.id,
+            familyId: record.familyId,
+            tokenHash: this.refreshTokenService.hash(rawRefreshToken),
+            expiresAt: this.refreshTokenService.getExpiresAt(),
+          },
+        });
+
+        const payload: JwtPayload = { sub: record.user.id };
+        const accessToken = await this.jwtService.signAsync(payload);
+
+        return { kind: 'success', accessToken, refreshToken: rawRefreshToken };
+      },
+    );
+
+    if (outcome.kind === 'invalid') {
       throw new UnauthorizedException(INVALID_REFRESH_TOKEN_MESSAGE);
     }
 
-    // Reuses the exact same status policy as login/JwtStrategy — see
-    // isAuthenticatable(). Presented here as a uniform 401 rather than
-    // login's 403, matching JwtStrategy's precedent: this is "continuing
-    // an existing session," not a fresh authentication attempt, so an
-    // account that can no longer authenticate simply reads as "this
-    // token/session is no longer valid."
-    if (!isAuthenticatable(record.user.status)) {
-      throw new UnauthorizedException(INVALID_REFRESH_TOKEN_MESSAGE);
-    }
-
-    const payload: JwtPayload = { sub: record.user.id };
-    const accessToken = await this.jwtService.signAsync(payload);
-
-    return { accessToken };
+    return { accessToken: outcome.accessToken, refreshToken: outcome.refreshToken };
   }
 
   /**

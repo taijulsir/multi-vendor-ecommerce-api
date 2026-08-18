@@ -721,6 +721,19 @@ The access token is short-lived.
 
 The refresh token is longer-lived and uses rotation.
 
+Rotation policy (implemented): each `POST /auth/refresh` call consumes the
+presented refresh token and issues a new access token and a new refresh
+token in its place, atomically. Every refresh token descended from one
+login shares a token-family identifier. Presenting a refresh token that
+has already been consumed (rotated away from, or previously revoked) is
+treated as refresh-token reuse: the entire family is revoked immediately,
+so every token in that chain — not just the reused one — stops working.
+The public response for any refresh failure (unknown token, expired
+token, reused token, or an account that can no longer authenticate) is a
+single generic 401 with no distinguishing detail. Sessions (families) are
+independent — revoking one never affects another, including other
+sessions for the same user.
+
 The authentication system is centralized around the User entity.
 
 There is no separate authentication system for vendors.

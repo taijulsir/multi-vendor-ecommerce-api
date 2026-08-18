@@ -78,22 +78,27 @@ export class AuthController {
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Exchange a refresh token for a new access token',
+    summary: 'Rotate a refresh token for a new access token + refresh token',
   })
   @ApiOkResponse({
     description:
-      'A new short-lived access token. The presented refresh token is ' +
-      'not rotated or invalidated in this phase.',
+      'A new short-lived access token and a new refresh token. The ' +
+      'presented refresh token is invalidated as part of this call and ' +
+      'cannot be used again — presenting it again is treated as refresh-' +
+      'token reuse.',
     schema: {
       example: {
         accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+        refreshToken: 'k3f9c2a01234a5b8c9d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f7081920a1b2c3d',
       },
     },
   })
   @ApiUnauthorizedResponse({
     description:
-      'The refresh token is missing, unrecognized, expired, or the ' +
-      'associated account is no longer permitted to authenticate.',
+      'The refresh token is missing, unrecognized, expired, already ' +
+      'used, or the associated account is no longer permitted to ' +
+      'authenticate. The response is intentionally generic and does not ' +
+      'indicate which of these applies.',
   })
   refresh(@Body() dto: RefreshTokenDto) {
     return this.authService.refresh(dto);
