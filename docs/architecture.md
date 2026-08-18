@@ -1071,6 +1071,19 @@ Implemented for `Shop` in Phase 9/10 (`VendorShopOwnershipGuard` +
 — see §23's "RBAC vs. Ownership" / "Admin Bypass" / "Ownership Scope"
 subsections for the concrete rule and current coverage.
 
+## Cart Ownership — User-owned, not Vendor-owned (Phase 12)
+
+`Cart` (`docs/database/cart.md` §20, `src/cart/`) has a different
+ownership shape than `Shop`/`Product`: `User → Cart → CartItem` is a
+direct `userId` match with no Vendor indirection at all. It deliberately
+does **not** use `OwnershipService` or a dedicated ownership guard —
+every `CartService` method scopes its own Prisma query straight to the
+authenticated `userId` (e.g. `cart: { userId, status: 'ACTIVE' }`), and
+an unowned/nonexistent `itemId` gets the same generic 403 used
+elsewhere. There is also no RBAC role requirement on any Cart route:
+authorization here is entirely resource ownership, since
+`docs/database/cart.md` never ties cart operations to a role.
+
 ---
 
 # 25. Transactions

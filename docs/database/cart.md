@@ -977,17 +977,29 @@ Inventory reservation model    APPROVED
 Concurrency requirements       APPROVED
 Cart lifecycle                 APPROVED
 
-Prisma models                  NOT IMPLEMENTED
-Database migration             NOT CREATED
-API implementation             NOT IMPLEMENTED
+Prisma models                  IMPLEMENTED
+Database migration             CREATED
+API implementation             IMPLEMENTED (Phase 12)
 Redis integration              NOT IMPLEMENTED
 BullMQ integration             NOT IMPLEMENTED
-Tests                          NOT IMPLEMENTED
+Tests                          IMPLEMENTED (Phase 12)
 ```
 
-> This document defines the initial Cart architecture. Prisma models,
-> migrations, services, APIs, Redis workflows, BullMQ jobs, and tests will
-> be implemented after the complete database architecture has been
-> finalized.
+> Phase 12 implemented `GET /api/cart`, `POST /api/cart/items`,
+> `PATCH /api/cart/items/:itemId`, `DELETE /api/cart/items/:itemId`, and
+> `DELETE /api/cart/items` (clear cart) exactly as specified above (§21).
+> Notable implementation decisions, not stated verbatim in this document
+> and reported in Phase 12's final report: `GET /api/cart` returns a
+> synthesized empty cart (200) rather than creating a Cart row or
+> returning 404 when the user has none yet — a new Cart row (with its
+> required, no-default `currency`) is only ever created as part of
+> `POST /api/cart/items`, using the first added variant's currency.
+> `PATCH /api/cart/items/:itemId` never touches `unitPriceSnapshot` — the
+> price/currency/attribute snapshot is only refreshed by
+> `POST /api/cart/items` (both the create and increment-existing-row
+> cases), matching this document's asymmetric §22 vs. §23 flows.
+> Currency-mismatch on add is reported as 409. Checkout/order conversion
+> (§17, §26) remains entirely unimplemented, as does cart
+> expiration/abandonment (§29) and Redis/BullMQ integration (§30).
 
 ````
