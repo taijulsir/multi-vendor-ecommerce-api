@@ -7,6 +7,7 @@ describe('VendorOrdersController', () => {
   const vendorOrdersService = {
     findMyVendorOrders: jest.fn(),
     findById: jest.fn(),
+    updateStatus: jest.fn(),
   };
 
   const user: SafeUser = {
@@ -49,5 +50,24 @@ describe('VendorOrdersController', () => {
     expect(vendorOrdersService.findById).toHaveBeenCalledWith(
       'vendor-order-uuid',
     );
+  });
+
+  describe('updateStatus', () => {
+    it("delegates to VendorOrdersService.updateStatus with the route param, DTO, and the guard-resolved user's id — never a body-supplied identity", async () => {
+      const dto = { status: 'CONFIRMED' as const };
+      const updated = { id: 'vendor-order-uuid', status: 'CONFIRMED' };
+      vendorOrdersService.updateStatus.mockResolvedValue(updated);
+
+      await expect(
+        controller.updateStatus(user, 'vendor-order-uuid', dto),
+      ).resolves.toEqual(updated);
+
+      expect(vendorOrdersService.updateStatus).toHaveBeenCalledWith(
+        'vendor-order-uuid',
+        dto,
+        user.id,
+      );
+      expect(vendorOrdersService.updateStatus).toHaveBeenCalledTimes(1);
+    });
   });
 });

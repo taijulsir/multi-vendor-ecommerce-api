@@ -1012,8 +1012,10 @@ Concretely implemented so far: `User → Vendor → Shop`
 `VendorShopOwnershipGuard` protects `GET`/`PATCH /api/shops/:shopId`
 (`src/shops/`). `ProductOwnershipGuard` protects
 `GET`/`PATCH /api/products/:productId` (`src/catalog/products/`).
-`VendorOrderOwnershipGuard` protects `GET /api/vendor-orders/:vendorOrderId`
-(`src/orders/`).
+`VendorOrderOwnershipGuard` protects `GET`/`PATCH /api/vendor-orders/:vendorOrderId`
+(`src/orders/`) — the `PATCH .../status` fulfillment-transition route
+added in Phase 19 reuses the same guard unchanged, not a second
+ownership mechanism.
 
 **Architectural decision (Phase 11, revisited Phase 14):** Product's
 ownership shape is identical to Shop's (`User → Vendor → <resource>`, a
@@ -1661,38 +1663,38 @@ The goal is to maintain a backend that is:
 
 ---
 
-# 39. Architecture Decisions Approved, Pending Implementation
+# 39. Architecture Decisions Approved (Implementation Status)
 
-Some architectural decisions relevant to upcoming work have been formally
-approved by the project owner but are not yet reflected in the
-application layer. The full, authoritative record — including exact
-approved behavior, source basis, and implementation constraints — lives
-in `docs/remaining-architecture-plan.md`'s **Architecture Decision
+Some architectural decisions were formally approved by the project owner
+ahead of their implementation phase. The full, authoritative record —
+exact approved behavior, source basis, and implementation constraints —
+lives in `docs/remaining-architecture-plan.md`'s **Architecture Decision
 Register**, not here, to avoid duplicating a living planning document
-inside this architectural reference. In summary, locked for future
-phases:
+inside this architectural reference. Status as of this note:
 
-* Vendor verification and activation are two separate ADMIN-only
-  operations (ADR-1) — extends §22-23's existing RBAC/ownership model,
-  no new authorization mechanism.
-* The `VendorOrder` fulfillment lifecycle is scoped to
-  `PENDING → CONFIRMED → PROCESSING → READY_TO_SHIP → SHIPPED →
-  DELIVERED` plus early-state cancellation only (ADR-2) — no
-  post-`PROCESSING` cancellation or return workflow is in scope.
-* `MasterOrder.status` is derived from its `VendorOrder`s, never
-  client-settable (ADR-3) — a direct application of §7 of
-  `docs/database/order.md`'s existing requirement.
-* Inventory ownership/authorization extends the existing
-  `User → Vendor → Product` ownership chain one hop further through
-  `ProductVariant → Inventory`, with adjustment being vendor-self-service
-  plus the existing ADMIN-bypass convention (ADR-4) — see §23's updated
-  note above.
+* **Implemented (Phase 17):** vendor verification and activation as two
+  separate ADMIN-only operations (ADR-1) — extends §22-23's existing
+  RBAC/ownership model, no new authorization mechanism.
+* **Implemented (Phase 19):** the `VendorOrder` fulfillment lifecycle,
+  scoped to `PENDING → CONFIRMED → PROCESSING → READY_TO_SHIP → SHIPPED →
+  DELIVERED` plus early-state (`PENDING`/`CONFIRMED`) cancellation only
+  (ADR-2) — no post-`PROCESSING` cancellation or return workflow is in
+  scope, vendor-initiated only via the existing `VendorOrderOwnershipGuard`.
+* **Implemented (Phase 19):** `MasterOrder.status` derived from its
+  `VendorOrder`s, never client-settable (ADR-3) — a direct application of
+  §7's existing requirement; see `src/orders/utils/master-order-status.ts`
+  for the exact derivation formula.
+* **Not yet implemented (planned for Phase 21):** inventory
+  ownership/authorization extending the existing `User → Vendor →
+  Product` ownership chain one hop further through `ProductVariant →
+  Inventory`, with adjustment being vendor-self-service plus the existing
+  ADMIN-bypass convention (ADR-4) — see §23's updated note above.
 
 None of these decisions change this document's existing architectural
 principles (§18-26) — they are applications of those principles to
-domains that don't have controllers yet, per the "existence of a domain
-does not mean its implementation must be created immediately" rule in
-§5.
+domains that either now have controllers (ADR-1/2/3) or don't yet
+(ADR-4), per the "existence of a domain does not mean its implementation
+must be created immediately" rule in §5.
 
 ````
 

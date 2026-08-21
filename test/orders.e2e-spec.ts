@@ -107,6 +107,43 @@ describe('Orders API (e2e)', () => {
     return { customer, fixture, order: checkoutResponse.body };
   };
 
+  /** Same as checkoutAsNewCustomer, but the cart contains items from two distinct vendors, producing two VendorOrders under one MasterOrder. */
+  const checkoutMultiVendorAsNewCustomer = async (firstName: string) => {
+    const customer = await registerAndLogin(firstName);
+    const fixtureA = await createVendorProductVariant();
+    const fixtureB = await createVendorProductVariant();
+
+    await request(app.getHttpServer())
+      .post('/api/cart/items')
+      .set('Authorization', `Bearer ${customer.accessToken}`)
+      .send({ variantId: fixtureA.variant.id, quantity: 1 })
+      .expect(200);
+    await request(app.getHttpServer())
+      .post('/api/cart/items')
+      .set('Authorization', `Bearer ${customer.accessToken}`)
+      .send({ variantId: fixtureB.variant.id, quantity: 1 })
+      .expect(200);
+
+    const checkoutResponse = await request(app.getHttpServer())
+      .post('/api/checkout')
+      .set('Authorization', `Bearer ${customer.accessToken}`)
+      .send({ shippingAddress })
+      .expect(201);
+
+    return { customer, fixtureA, fixtureB, order: checkoutResponse.body };
+  };
+
+  const createAdmin = async (firstName: string) => {
+    const adminRole = await prisma.role.findUniqueOrThrow({
+      where: { name: 'ADMIN' },
+    });
+    const admin = await registerAndLogin(firstName);
+    await prisma.userRole.create({
+      data: { userId: admin.id, roleId: adminRole.id },
+    });
+    return admin;
+  };
+
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -488,6 +525,390 @@ describe('Orders API (e2e)', () => {
         .get(`/api/vendor-orders/${randomUUID()}`)
         .set('Authorization', `Bearer ${adminAccount.accessToken}`)
         .expect(404);
+    });
+  });
+
+  // -----------------------------------------------------------------
+  // Vendor order status lifecycle (Phase 19, ADR-2/ADR-3)
+  // -----------------------------------------------------------------
+  describe('PATCH /api/vendor-orders/:vendorOrderId/status', () => {
+    it('rejects (401) an unauthenticated request', async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/vendor-orders/${randomUUID()}/status`)
+        .send({ status: 'CONFIRMED' })
+        .expect(401);
+    });
+
+    it('allows a vendor to progress a single-vendor order through the full documented lifecycle, deriving MasterOrder to FULFILLED', async () => {
+      const { fixture, order } = await checkoutAsNewCustomer(
+        'LifecycleVendorUser',
+      );
+      const listResponse = await request(app.getHttpServer())
+        .get('/api/vendor-orders')
+        .set('Authorization', `Bearer ${fixture.owner.accessToken}`)
+        .expect(200);
+      const vendorOrderId = listResponse.body[0].id;
+
+      const transitions = [
+        'CONFIRMED',
+        'PROCESSING',
+        'READY_TO_SHIP',
+        'SHIPPED',
+        'DELIVERED',
+      ];
+
+      for (const status of transitions) {
+        const response = await request(app.getHttpServer())
+          .patch(`/api/vendor-orders/${vendorOrderId}/status`)
+          .set('Authorization', `Bearer ${fixture.owner.accessToken}`)
+          .send({ status })
+          .expect(200);
+
+        expect(response.body.status).toBe(status);
+      }
+
+      const finalVendorOrder = await prisma.vendorOrder.findUniqueOrThrow({
+        where: { id: vendorOrderId },
+      });
+      expect(finalVendorOrder.status).toBe('DELIVERED');
+      expect(finalVendorOrder.shippedAt).not.toBeNull();
+      expect(finalVendorOrder.deliveredAt).not.toBeNull();
+
+      const history = await prisma.vendorOrderStatusHistory.findMany({
+        where: { vendorOrderId },
+        orderBy: { createdAt: 'asc' },
+      });
+      // CheckoutService already writes the initial PENDING row
+      // (fromStatus: null) at order creation — this phase's 5 vendor-
+      // initiated transitions come after it.
+      expect(history).toHaveLength(1 + transitions.length);
+      expect(history[0]).toMatchObject({
+        fromStatus: null,
+        toStatus: 'PENDING',
+      });
+      expect(history.slice(1).map((h) => h.toStatus)).toEqual(transitions);
+      expect(
+        history.slice(1).every((h) => h.changedBy === fixture.owner.id),
+      ).toBe(true);
+
+      // MasterOrder derived to FULFILLED — single vendor, all delivered —
+      // with its own OrderStatusHistory trail, and paymentStatus
+      // untouched (Phase 15's concern, not this phase's).
+      const finalMasterOrder = await prisma.masterOrder.findUniqueOrThrow({
+        where: { id: order.id },
+      });
+      expect(finalMasterOrder.status).toBe('FULFILLED');
+      expect(finalMasterOrder.paymentStatus).toBe('PENDING');
+
+      const masterHistory = await prisma.orderStatusHistory.findMany({
+        where: { masterOrderId: order.id },
+        orderBy: { createdAt: 'asc' },
+      });
+      // Initial PENDING row (from checkout) + CONFIRMED, PROCESSING,
+      // FULFILLED derived transitions (READY_TO_SHIP/SHIPPED collapse
+      // into PROCESSING and produce no additional MasterOrder change).
+      expect(masterHistory.map((h) => h.toStatus)).toEqual([
+        'PENDING',
+        'CONFIRMED',
+        'PROCESSING',
+        'FULFILLED',
+      ]);
+    });
+
+    it('allows PENDING → CANCELLED and derives MasterOrder to CANCELLED for a single-vendor order', async () => {
+      const { fixture, order } =
+        await checkoutAsNewCustomer('CancelVendorUser');
+      const listResponse = await request(app.getHttpServer())
+        .get('/api/vendor-orders')
+        .set('Authorization', `Bearer ${fixture.owner.accessToken}`)
+        .expect(200);
+      const vendorOrderId = listResponse.body[0].id;
+
+      const response = await request(app.getHttpServer())
+        .patch(`/api/vendor-orders/${vendorOrderId}/status`)
+        .set('Authorization', `Bearer ${fixture.owner.accessToken}`)
+        .send({ status: 'CANCELLED' })
+        .expect(200);
+
+      expect(response.body.status).toBe('CANCELLED');
+      expect(response.body.cancelledAt).not.toBeNull();
+
+      const finalMasterOrder = await prisma.masterOrder.findUniqueOrThrow({
+        where: { id: order.id },
+      });
+      expect(finalMasterOrder.status).toBe('CANCELLED');
+      expect(finalMasterOrder.cancelledAt).not.toBeNull();
+    });
+
+    it.each([
+      ['PENDING', 'PROCESSING'],
+      ['PENDING', 'DELIVERED'],
+      ['CONFIRMED', 'READY_TO_SHIP'],
+    ])(
+      'rejects (409) the undocumented transition %s → %s',
+      async (from, to) => {
+        const { fixture } = await checkoutAsNewCustomer(
+          `InvalidTransition${from}${to}User`,
+        );
+        const listResponse = await request(app.getHttpServer())
+          .get('/api/vendor-orders')
+          .set('Authorization', `Bearer ${fixture.owner.accessToken}`)
+          .expect(200);
+        const vendorOrderId = listResponse.body[0].id;
+
+        if (from !== 'PENDING') {
+          await request(app.getHttpServer())
+            .patch(`/api/vendor-orders/${vendorOrderId}/status`)
+            .set('Authorization', `Bearer ${fixture.owner.accessToken}`)
+            .send({ status: from })
+            .expect(200);
+        }
+
+        await request(app.getHttpServer())
+          .patch(`/api/vendor-orders/${vendorOrderId}/status`)
+          .set('Authorization', `Bearer ${fixture.owner.accessToken}`)
+          .send({ status: to })
+          .expect(409);
+      },
+    );
+
+    it('rejects (409) PROCESSING → CANCELLED (explicitly excluded from this MVP by ADR-2)', async () => {
+      const { fixture } = await checkoutAsNewCustomer('ProcessingCancelUser');
+      const listResponse = await request(app.getHttpServer())
+        .get('/api/vendor-orders')
+        .set('Authorization', `Bearer ${fixture.owner.accessToken}`)
+        .expect(200);
+      const vendorOrderId = listResponse.body[0].id;
+
+      await request(app.getHttpServer())
+        .patch(`/api/vendor-orders/${vendorOrderId}/status`)
+        .set('Authorization', `Bearer ${fixture.owner.accessToken}`)
+        .send({ status: 'CONFIRMED' })
+        .expect(200);
+      await request(app.getHttpServer())
+        .patch(`/api/vendor-orders/${vendorOrderId}/status`)
+        .set('Authorization', `Bearer ${fixture.owner.accessToken}`)
+        .send({ status: 'PROCESSING' })
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .patch(`/api/vendor-orders/${vendorOrderId}/status`)
+        .set('Authorization', `Bearer ${fixture.owner.accessToken}`)
+        .send({ status: 'CANCELLED' })
+        .expect(409);
+    });
+
+    it('rejects (403) another vendor updating a VendorOrder they do not own', async () => {
+      const { fixture: fixtureA } = await checkoutAsNewCustomer(
+        'StatusCrossVendorOwnerA',
+      );
+      const fixtureB = await createVendorProductVariant();
+
+      const listResponse = await request(app.getHttpServer())
+        .get('/api/vendor-orders')
+        .set('Authorization', `Bearer ${fixtureA.owner.accessToken}`)
+        .expect(200);
+      const vendorOrderId = listResponse.body[0].id;
+
+      const response = await request(app.getHttpServer())
+        .patch(`/api/vendor-orders/${vendorOrderId}/status`)
+        .set('Authorization', `Bearer ${fixtureB.owner.accessToken}`)
+        .send({ status: 'CONFIRMED' })
+        .expect(403);
+
+      const serialized = JSON.stringify(response.body).toLowerCase();
+      expect(serialized).not.toMatch(/prisma|postgres|sql/);
+
+      // The targeted VendorOrder must remain untouched by the rejected
+      // cross-vendor attempt.
+      const untouched = await prisma.vendorOrder.findUniqueOrThrow({
+        where: { id: vendorOrderId },
+      });
+      expect(untouched.status).toBe('PENDING');
+    });
+
+    it('a spoofed vendorId/userId in the body cannot substitute for ownership when the caller is not the actual owner', async () => {
+      const { fixture: fixtureA } =
+        await checkoutAsNewCustomer('StatusSpoofOwnerA');
+      const fixtureB = await createVendorProductVariant();
+
+      const listResponse = await request(app.getHttpServer())
+        .get('/api/vendor-orders')
+        .set('Authorization', `Bearer ${fixtureA.owner.accessToken}`)
+        .expect(200);
+      const vendorOrderId = listResponse.body[0].id;
+
+      await request(app.getHttpServer())
+        .patch(`/api/vendor-orders/${vendorOrderId}/status`)
+        .set('Authorization', `Bearer ${fixtureB.owner.accessToken}`)
+        .send({
+          status: 'CONFIRMED',
+          vendorId: fixtureA.vendor.id,
+          userId: fixtureA.owner.id,
+        })
+        .expect((res) => {
+          // Either rejected by whitelist validation (400, unknown
+          // property) or by ownership (403) — never a success.
+          if (![400, 403].includes(res.status)) {
+            throw new Error(`Unexpected status ${res.status}`);
+          }
+        });
+    });
+
+    it('rejects (400) a body attempting to set unrelated/server-controlled fields even for the actual owner', async () => {
+      const { fixture } = await checkoutAsNewCustomer(
+        'StatusUnrelatedFieldsUser',
+      );
+      const listResponse = await request(app.getHttpServer())
+        .get('/api/vendor-orders')
+        .set('Authorization', `Bearer ${fixture.owner.accessToken}`)
+        .expect(200);
+      const vendorOrderId = listResponse.body[0].id;
+
+      await request(app.getHttpServer())
+        .patch(`/api/vendor-orders/${vendorOrderId}/status`)
+        .set('Authorization', `Bearer ${fixture.owner.accessToken}`)
+        .send({
+          status: 'CONFIRMED',
+          vendorId: randomUUID(),
+          masterOrderId: randomUUID(),
+          totalAmount: '1.00',
+        })
+        .expect(400);
+    });
+
+    it("allows an ADMIN to update any vendor's VendorOrder status (documented bypass)", async () => {
+      const { fixture } = await checkoutAsNewCustomer('StatusAdminUser');
+      const admin = await createAdmin('StatusAdmin');
+
+      const listResponse = await request(app.getHttpServer())
+        .get('/api/vendor-orders')
+        .set('Authorization', `Bearer ${fixture.owner.accessToken}`)
+        .expect(200);
+      const vendorOrderId = listResponse.body[0].id;
+
+      const response = await request(app.getHttpServer())
+        .patch(`/api/vendor-orders/${vendorOrderId}/status`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ status: 'CONFIRMED' })
+        .expect(200);
+
+      expect(response.body.status).toBe('CONFIRMED');
+
+      const history = await prisma.vendorOrderStatusHistory.findFirst({
+        where: { vendorOrderId },
+        orderBy: { createdAt: 'desc' },
+      });
+      expect(history?.changedBy).toBe(admin.id);
+    });
+
+    it('returns 404 for a nonexistent VendorOrder id when accessed as ADMIN (guard bypasses existence check)', async () => {
+      const admin = await createAdmin('StatusAdminNotFound');
+
+      await request(app.getHttpServer())
+        .patch(`/api/vendor-orders/${randomUUID()}/status`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ status: 'CONFIRMED' })
+        .expect(404);
+    });
+
+    it('derives MasterOrder to PARTIALLY_FULFILLED when only one of two vendors has delivered, leaving the other VendorOrder untouched', async () => {
+      const { fixtureA, fixtureB, order } =
+        await checkoutMultiVendorAsNewCustomer('PartialFulfillmentUser');
+
+      const listA = await request(app.getHttpServer())
+        .get('/api/vendor-orders')
+        .set('Authorization', `Bearer ${fixtureA.owner.accessToken}`)
+        .expect(200);
+      const vendorOrderAId = listA.body[0].id;
+
+      for (const status of [
+        'CONFIRMED',
+        'PROCESSING',
+        'READY_TO_SHIP',
+        'SHIPPED',
+        'DELIVERED',
+      ]) {
+        await request(app.getHttpServer())
+          .patch(`/api/vendor-orders/${vendorOrderAId}/status`)
+          .set('Authorization', `Bearer ${fixtureA.owner.accessToken}`)
+          .send({ status })
+          .expect(200);
+      }
+
+      const masterOrder = await prisma.masterOrder.findUniqueOrThrow({
+        where: { id: order.id },
+      });
+      expect(masterOrder.status).toBe('PARTIALLY_FULFILLED');
+
+      // Vendor B's own VendorOrder must remain completely untouched by
+      // Vendor A's transitions.
+      const listB = await request(app.getHttpServer())
+        .get('/api/vendor-orders')
+        .set('Authorization', `Bearer ${fixtureB.owner.accessToken}`)
+        .expect(200);
+      expect(listB.body[0].status).toBe('PENDING');
+
+      // Completing Vendor B's side too must derive the MasterOrder all
+      // the way to FULFILLED.
+      const vendorOrderBId = listB.body[0].id;
+      for (const status of [
+        'CONFIRMED',
+        'PROCESSING',
+        'READY_TO_SHIP',
+        'SHIPPED',
+        'DELIVERED',
+      ]) {
+        await request(app.getHttpServer())
+          .patch(`/api/vendor-orders/${vendorOrderBId}/status`)
+          .set('Authorization', `Bearer ${fixtureB.owner.accessToken}`)
+          .send({ status })
+          .expect(200);
+      }
+
+      const finalMasterOrder = await prisma.masterOrder.findUniqueOrThrow({
+        where: { id: order.id },
+      });
+      expect(finalMasterOrder.status).toBe('FULFILLED');
+    });
+
+    describe('Concurrency', () => {
+      it('lets exactly one of two concurrent status-update requests against the same VendorOrder succeed', async () => {
+        const { fixture } = await checkoutAsNewCustomer(
+          'StatusConcurrencyUser',
+        );
+        const listResponse = await request(app.getHttpServer())
+          .get('/api/vendor-orders')
+          .set('Authorization', `Bearer ${fixture.owner.accessToken}`)
+          .expect(200);
+        const vendorOrderId = listResponse.body[0].id;
+
+        const [responseA, responseB] = await Promise.all([
+          request(app.getHttpServer())
+            .patch(`/api/vendor-orders/${vendorOrderId}/status`)
+            .set('Authorization', `Bearer ${fixture.owner.accessToken}`)
+            .send({ status: 'CONFIRMED' }),
+          request(app.getHttpServer())
+            .patch(`/api/vendor-orders/${vendorOrderId}/status`)
+            .set('Authorization', `Bearer ${fixture.owner.accessToken}`)
+            .send({ status: 'CONFIRMED' }),
+        ]);
+
+        const statuses = [responseA.status, responseB.status].sort(
+          (a, b) => a - b,
+        );
+        expect(statuses).toEqual([200, 409]);
+
+        const history = await prisma.vendorOrderStatusHistory.findMany({
+          where: { vendorOrderId, toStatus: 'CONFIRMED' },
+        });
+        expect(history).toHaveLength(1);
+
+        const finalVendorOrder = await prisma.vendorOrder.findUniqueOrThrow({
+          where: { id: vendorOrderId },
+        });
+        expect(finalVendorOrder.status).toBe('CONFIRMED');
+      });
     });
   });
 });

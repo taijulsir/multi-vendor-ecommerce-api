@@ -244,13 +244,17 @@ fulfilled.
 Therefore the MasterOrder status must not simply be updated independently
 without considering its child VendorOrders.
 
-> **Approved (2026-08-22, ADR-3):** `MasterOrder.status` is derived
-> server-side from child `VendorOrder` states and is never directly
-> client-settable. All children `DELIVERED` → `FULFILLED`; some but not
-> all → `PARTIALLY_FULFILLED`. See `docs/remaining-architecture-plan.md`'s
-> Architecture Decision Register. Not yet implemented — the precise
-> bucket mapping for every intermediate combination remains an
-> implementation detail for Phase 19.
+> **Approved (2026-08-22, ADR-3) and implemented (Phase 19, 2026-08-22):**
+> `MasterOrder.status` is derived server-side from child `VendorOrder`
+> states and is never directly client-settable. All (non-cancelled)
+> children `DELIVERED` → `FULFILLED`; some but not all →
+> `PARTIALLY_FULFILLED`; every child `CANCELLED` → `CANCELLED`; otherwise
+> the least-advanced active child's stage (`PENDING`/`CONFIRMED`/
+> `PROCESSING`) — see `src/orders/utils/master-order-status.ts` for the
+> full, documented bucket mapping and
+> `docs/remaining-architecture-plan.md`'s Architecture Decision Register
+> for the approved principle. Recomputed inside the same transaction as
+> every `VendorOrder` status write.
 
 ---
 
@@ -851,14 +855,20 @@ COMPLETED     → return/refund flow
 The exact cancellation rules will be finalized together with Payment,
 Refund, and Fulfillment domains.
 
-> **Approved (2026-08-22, ADR-2):** the in-scope MVP progression is
-> `PENDING → CONFIRMED → PROCESSING → READY_TO_SHIP → SHIPPED →
-> DELIVERED`, with cancellation approved only for `PENDING`/`CONFIRMED`.
-> `PROCESSING → CANCELLED`, `SHIPPED → CANCELLED`, and any return/refund-
-> driven fulfillment flow are explicitly **excluded from this MVP** by
-> decision, not merely unanswered. See
+> **Approved (2026-08-22, ADR-2) and implemented (Phase 19, 2026-08-22):**
+> the in-scope MVP progression is `PENDING → CONFIRMED → PROCESSING →
+> READY_TO_SHIP → SHIPPED → DELIVERED`, with cancellation approved and
+> implemented only for `PENDING`/`CONFIRMED` (vendor-initiated,
+> `PATCH /api/vendor-orders/:vendorOrderId/status`). `PROCESSING →
+> CANCELLED`, `SHIPPED → CANCELLED`, and any return/refund-driven
+> fulfillment flow remain explicitly **excluded from this MVP** by
+> decision, not merely unimplemented. See
 > `docs/remaining-architecture-plan.md`'s Architecture Decision Register.
-> Not yet implemented at the application layer as of this note.
+> **Customer-initiated cancellation was not implemented** — re-reading
+> §48 ("Security and Authorization") directly during this phase found no
+> textual basis for a customer mutation capability; §48 lists only
+> viewing rights for customers and "Update fulfillment-related state"
+> only for vendors. See this phase's final report for the full reasoning.
 
 ---
 
@@ -1634,12 +1644,12 @@ Concurrency requirements              APPROVED
 
 Prisma models                         IMPLEMENTED
 Database migration                    CREATED
-API implementation                    PARTIALLY IMPLEMENTED (Phase 13 checkout + Phase 14 viewing)
+API implementation                    PARTIALLY IMPLEMENTED (Phase 13 checkout + Phase 14 viewing + Phase 19 fulfillment lifecycle)
 Payment integration                   NOT IMPLEMENTED
 Refund integration                    NOT IMPLEMENTED
 Redis integration                     NOT IMPLEMENTED
 BullMQ integration                    NOT IMPLEMENTED
-Tests                                 IMPLEMENTED (Phases 13–14, 18)
+Tests                                 IMPLEMENTED (Phases 13–14, 18–19)
 ```
 
 > Phase 13 implemented `POST /api/checkout` — Cart → MasterOrder +
@@ -1699,6 +1709,23 @@ Tests                                 IMPLEMENTED (Phases 13–14, 18)
 > produce exactly one `MasterOrder`/`VendorOrder`/`OrderItem` and exactly
 > one inventory reservation — never two. Confirms the existing Phase 13
 > design; nothing about it changed.
+
+> Phase 19 implemented the VendorOrder fulfillment lifecycle
+> (`PATCH /api/vendor-orders/:vendorOrderId/status`, ADR-2) and
+> MasterOrder status derivation (ADR-3) — see §7 and §31's update notes
+> above for the exact implemented transition matrix and derivation
+> formula. Vendor-initiated only: ownership enforced by the existing
+> `VendorOrderOwnershipGuard` (no new authorization mechanism), ADMIN
+> bypass preserved unchanged. Every transition is atomic with its
+> `VendorOrderStatusHistory` row and any resulting `MasterOrder`/
+> `OrderStatusHistory` write (one `$transaction`, the same pattern
+> `CheckoutService` already established) — proven under genuine
+> concurrency the same way Phase 18 proved checkout's guard. Does not
+> touch `MasterOrder.paymentStatus` (Phase 15's concern), does not touch
+> `Inventory` (Phase 13's reservation is untouched), and does not
+> implement customer-initiated cancellation, `RETURN_REQUESTED`/
+> `RETURNED`, or any `MasterOrderStatus.COMPLETED` trigger — all remain
+> out of scope exactly as ADR-2 excludes them.
 
 The Order domain is the authoritative representation of completed
 purchases and must preserve sufficient historical information to remain

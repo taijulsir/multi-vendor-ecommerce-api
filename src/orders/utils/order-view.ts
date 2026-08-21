@@ -39,6 +39,13 @@ export interface VendorOrderView {
   shippingAmount: string;
   taxAmount: string;
   totalAmount: string;
+  // Populated by VendorOrdersService.updateStatus (Phase 19) when the
+  // corresponding status is reached; null until then. Not client-
+  // settable — mechanical consequences of the status transition itself,
+  // not separate business data.
+  shippedAt: Date | null;
+  deliveredAt: Date | null;
+  cancelledAt: Date | null;
   items: OrderItemView[];
 }
 
@@ -59,6 +66,10 @@ export interface MasterOrderView {
   customerNote: string | null;
   placedAt: Date | null;
   createdAt: Date;
+  // Set only when `status` is derived to CANCELLED (Phase 19,
+  // VendorOrdersService.recomputeMasterOrderStatus) — see MasterOrder
+  // status derivation (ADR-3).
+  cancelledAt: Date | null;
   vendorOrders: VendorOrderView[];
 }
 
@@ -93,6 +104,9 @@ function toVendorOrderView(
     shippingAmount: vendorOrder.shippingAmount.toFixed(2),
     taxAmount: vendorOrder.taxAmount.toFixed(2),
     totalAmount: vendorOrder.totalAmount.toFixed(2),
+    shippedAt: vendorOrder.shippedAt,
+    deliveredAt: vendorOrder.deliveredAt,
+    cancelledAt: vendorOrder.cancelledAt,
     items: vendorOrder.items.map(toOrderItemView),
   };
 }
@@ -145,6 +159,7 @@ export function toMasterOrderView(
     customerNote: masterOrder.customerNote,
     placedAt: masterOrder.placedAt,
     createdAt: masterOrder.createdAt,
+    cancelledAt: masterOrder.cancelledAt,
     vendorOrders: masterOrder.vendorOrders.map(toVendorOrderView),
   };
 }

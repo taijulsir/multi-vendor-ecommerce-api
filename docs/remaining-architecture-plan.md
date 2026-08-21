@@ -12,14 +12,20 @@ Based on          docs/project-completion-audit.md (primary current-state
                    src/**, test/**, postman/**, Dockerfile,
                    docker-compose.yml, .github/workflows/, eslint.config.mjs,
                    package.json, .env.example
-Status of P0/P1   Phase 17 (P0.1, Vendor Verification/Activation) and
-                   Phase 18 (P0.3, Concurrent Checkout E2E Proof) both
-                   IMPLEMENTED as of 2026-08-22 — see Section 6's Phase 17
-                   and Phase 18 entries, `docs/database/vendor-shop.md`
-                   §22, and Section 16's testing-strategy note. Phase 18
-                   added test coverage only — zero application code
-                   changed. Phases 19-26 NOT started; this document
-                   remains the plan for all remaining work.
+Status of P0/P1   Phase 17 (P0.1, Vendor Verification/Activation),
+                   Phase 18 (P0.3, Concurrent Checkout E2E Proof), and
+                   Phase 19 (P0.2, Order Status Lifecycle) all IMPLEMENTED
+                   as of 2026-08-22 — see Section 6's Phase 17/18/19
+                   entries, `docs/database/vendor-shop.md` §22,
+                   `docs/database/order.md` §58, and Section 16's
+                   testing-strategy note. Phase 18 added test coverage
+                   only (zero application code changed); Phase 19
+                   implemented the vendor-initiated subset of the order
+                   lifecycle only — customer-initiated cancellation was
+                   found unsupported by the source documents on direct
+                   re-reading and was not built (see Section 22).
+                   Phases 20-26 NOT started; this document remains the
+                   plan for all remaining work.
 Baseline           2026-08-22 — Architecture Decision Register added below;
                     four decisions locked by explicit project-owner approval
                     (see register). ADR-1 through ADR-4 remain APPROVED and
@@ -206,7 +212,7 @@ model), and no `WalletTransaction` is ever created.
 | Checkout | ✅ | ✅ | ✅ | ✅ | ✅ | IMPLEMENTED | safe |
 | Order Creation | ✅ | ✅ | ✅ | ✅ | ✅ | IMPLEMENTED | safe |
 | Order Viewing | ✅ | ✅ | ✅ | ✅ | ✅ | IMPLEMENTED | safe |
-| Order Status Lifecycle | ✅ (enums + history tables) | ❌ | ❌ | ❌ | ❌ | SCHEMA ONLY | do not claim |
+| Order Status Lifecycle | ✅ (enums + history tables) | ✅ vendor-initiated subset (Phase 19) | ✅ `PATCH /vendor-orders/:id/status` | ✅ | ✅ | IMPLEMENTED (narrow, ADR-2/ADR-3 scope — see `docs/database/order.md` §58) | safe, narrowly (see §17) |
 | Payment | ✅ | ✅ | ✅ | ✅ | ✅ | IMPLEMENTED (no gateway) | safe, narrowly (see §17) |
 | Refund | ✅ | ✅ | ✅ | ✅ | ✅ | IMPLEMENTED (admin-issued only) | safe, narrowly |
 | Webhook | ✅ | ✅ | ✅ | ✅ | ✅ | IMPLEMENTED (no signature verification) | safe, narrowly |
@@ -599,6 +605,37 @@ dependency analysis.
   ADR-2/ADR-3, down from the prior "medium-high, needs a business-decision
   pause." Only the narrow customer-vs-vendor cancellation-initiator split
   (Section 22) remains open, and it does not block starting this phase.
+
+> **STATUS: IMPLEMENTED (2026-08-22).** `PATCH
+> /api/vendor-orders/:vendorOrderId/status` (vendor-owned via the
+> existing `VendorOrderOwnershipGuard`, ADMIN bypass preserved unchanged)
+> implements exactly the ADR-2 transition matrix, plus ADR-3's MasterOrder
+> derivation (`src/orders/utils/master-order-status.ts`), both inside one
+> `$transaction` per request alongside their `VendorOrderStatusHistory`/
+> `OrderStatusHistory` rows. **Files affected matched the prediction**
+> except: `orders.service.ts` (customer viewing) needed **no changes at
+> all** — it already maps `status` generically, so new `MasterOrderStatus`
+> values need no code change there; the derivation logic lives in
+> `vendor-orders.service.ts` instead, next to the endpoint that triggers
+> it. `docs/API.md`/README/Postman were **not** updated in this phase
+> (deferred to Phase 25's documentation refresh, consistent with how
+> Phases 17-18 handled the same items).
+>
+> **Customer-vs-vendor cancellation-initiator split — resolved, not left
+> open.** Re-reading `docs/database/order.md` §48 directly (rather than
+> relying on a prior planning pass's paraphrase of it) found no textual
+> basis for a customer-initiated cancellation capability: §48 lists only
+> "View their own MasterOrders/VendorOrders/OrderItems" for customers,
+> and "Update fulfillment-related state according to permissions" only
+> for vendors. **No customer-facing cancellation endpoint was built.**
+> This is a stricter reading than ADR-2's own implementation-constraints
+> note assumed — see this phase's final report for the full comparison.
+>
+> 43 new unit tests (derivation utility + service + controller) + 15 new
+> e2e tests added, all passing; full suite (368 unit / 255 e2e) green;
+> `npx prisma validate`/`migrate status` clean with zero schema changes.
+> No production bug found in prior phases' code; zero changes to
+> `CheckoutService`, `PaymentsService`, `CartService`, or `OrdersService`.
 
 ## Phase 20 — Product / Category List APIs
 
@@ -1126,12 +1163,18 @@ hasn't changed.
 is locked, not a proposal. Precise transition matrix and re-apply
 idempotency remain open per Section 22, narrowly.)*
 
-**Phase 19 — Order Status Lifecycle**
+**Phase 19 — Order Status Lifecycle — IMPLEMENTED (2026-08-22)**
 
 | Method | Path | Auth | Authz | DTO | Response | Ownership | Swagger | E2E |
 |---|---|---|---|---|---|---|---|---|
-| PATCH | /vendor-orders/:vendorOrderId/status | JWT | none (ownership-gated) | `UpdateVendorOrderStatusDto {status, note?}` | VendorOrder | `VendorOrderOwnershipGuard` | required | required |
-| POST | /orders/:masterOrderId/cancel | JWT | none | — (or `{reason?}`) | MasterOrder | direct `userId` scoping (existing pattern) | required | required |
+| PATCH | /vendor-orders/:vendorOrderId/status | JWT | none (ownership-gated) | `UpdateVendorOrderStatusDto {status}` (no `note` field — not in the approved scope) | VendorOrder | `VendorOrderOwnershipGuard` | ✅ done | ✅ done |
+| ~~POST /orders/:masterOrderId/cancel~~ | — | — | — | — | — | — | **NOT BUILT** | — |
+
+The planned customer-facing cancel endpoint was **not implemented** —
+re-reading `docs/database/order.md` §48 directly during this phase found
+no textual basis for a customer mutation capability (§48 grants customers
+only viewing rights; "Update fulfillment-related state" is listed only
+for vendors). See Section 22 and this phase's final report.
 
 **Phase 20 — List Endpoints**
 
@@ -1208,8 +1251,10 @@ refund-creation.
 
 - **Phase 17:** 2 new requests in `03 Vendors` (verification, activation),
   ADMIN-token-authenticated.
-- **Phase 19:** 1-2 new requests in `09 Orders`/`10 Vendor Orders`
-  (cancel, status update), with an auto-capture-friendly response.
+- **Phase 19:** 1 new request in `10 Vendor Orders` (status update) —
+  built and implemented 2026-08-22; the planned customer-facing cancel
+  request was not added since no such endpoint was built (see Section 6's
+  Phase 19 entry).
 - **Phase 20:** 2 new requests in `05 Categories`/`06 Products` (list
   endpoints) — no new env vars needed.
 - **Phase 21:** new folder `07 Product Variants` (or nested under `06
@@ -1318,9 +1363,11 @@ production deployment.
    under real concurrent load — previously only proven by code
    inspection, now proven by a genuinely concurrent, real-Postgres e2e
    test in `test/checkout.e2e-spec.ts`.
-2. **Order status transition matrix tests** (Phase 19) — every valid
-   transition, every explicitly-invalid transition, cross-vendor
-   isolation on vendor-order status updates.
+2. ~~**Order status transition matrix tests** (Phase 19)~~ — **DONE
+   (2026-08-22).** Every valid transition, every explicitly-invalid
+   transition, cross-vendor isolation, and MasterOrder-derivation
+   correctness are covered in `test/orders.e2e-spec.ts` and
+   `src/orders/vendor-orders.service.spec.ts`.
 3. **Inventory concurrency tests for Restock/Adjust** (Phase 21) —
    concurrent restock + concurrent reservation racing against the same
    variant, proving the `CHECK` constraints and atomic-UPDATE pattern
@@ -1361,7 +1408,8 @@ match, not introduce a new testing pattern):
 
 (Restated from `docs/project-completion-audit.md` Part 15, updated
 2026-08-22 — Vendor verification/activation added following Phase 17;
-concurrency proof added following Phase 18.)
+concurrency proof added following Phase 18; vendor-initiated order
+fulfillment lifecycle added following Phase 19.)
 
 - JWT authentication with refresh-token rotation and reuse detection.
 - RBAC with live database re-evaluation.
@@ -1376,8 +1424,15 @@ concurrency proof added following Phase 18.)
   requests against the same cart/inventory are verified, directly against
   PostgreSQL, to always produce exactly one order and exactly one
   reservation, never two.
+- Vendor-initiated order fulfillment lifecycle (Phase 19) —
+  `PENDING → CONFIRMED → PROCESSING → READY_TO_SHIP → SHIPPED →
+  DELIVERED`, plus early-state cancellation, each vendor-owned and
+  ownership-enforced, with an automatically-derived, never-client-settable
+  `MasterOrder.status` and a full immutable status-history trail. **Claim
+  precisely this narrow scope** — not "full order management" (see DO NOT
+  CLAIM YET).
 - Two-layer webhook idempotency.
-- 325 unit + 241 e2e tests, including adversarial and concurrency
+- 368 unit + 255 e2e tests, including adversarial and concurrency
   scenarios.
 - Verified Docker build + CI pipeline against real Postgres/Redis.
 
@@ -1387,9 +1442,11 @@ concurrency proof added following Phase 18.)
 - Complete/purchasable product catalog with variants — becomes safe after
   Phase 21.
 - Product image upload — becomes safe after Phase 22.
-- Order fulfillment lifecycle — becomes safe (for the implemented subset
-  only — see Section 9's BLOCKED list, which will likely remain partially
-  true even after Phase 19) after Phase 19.
+- "Full order management" or "customer order cancellation" — Phase 19
+  implemented only the vendor-initiated subset ADR-2 approved; customer-
+  initiated cancellation, `PROCESSING`/`SHIPPED → CANCELLED`, returns, and
+  `MasterOrderStatus.COMPLETED` all remain unimplemented by explicit
+  decision, not oversight (see `docs/database/order.md` §31/§49).
 - A full vendor re-verification/appeals workflow (rejected vendors
   re-applying) — deliberately not implemented in Phase 17; only the
   narrow, documented transition matrix is safe to claim.
@@ -1458,7 +1515,7 @@ flowchart TD
     Cart --> Checkout[Checkout — IMPLEMENTED]
     Checkout -->|reserves via atomic UPDATE| Inventory
     Checkout --> Orders[Order Creation — IMPLEMENTED]
-    Orders --> OrderLifecycle[Order Status Lifecycle — PLANNED Phase19, partial]
+    Orders --> OrderLifecycle[Order Status Lifecycle — IMPLEMENTED Phase19, vendor-initiated subset]
     Orders --> Payments[Payments — IMPLEMENTED, no gateway]
     Payments --> Refund[Refund — IMPLEMENTED, admin-only]
     Payments -.->|external, unauthenticated| Webhook[Webhook — IMPLEMENTED, no signature]
@@ -1487,12 +1544,13 @@ phase sequence.
 ## Architecture
 - [x] Current architecture reconstructed and verified (Section 2)
 - [x] Remaining architecture planned (this document)
-- [ ] Phase 17-26 execution (Phases 17-18 complete as of 2026-08-22; Phases
-      19-26 not started)
+- [ ] Phase 17-26 execution (Phases 17-19 complete as of 2026-08-22; Phases
+      20-26 not started)
 
 ## Backend
 - [x] Vendor verification/activation (Phase 17) — completed 2026-08-22
-- [ ] Order status lifecycle — well-defined subset (Phase 19)
+- [x] Order status lifecycle — vendor-initiated subset (Phase 19) —
+      completed 2026-08-22
 
 ## Catalog
 - [ ] Product/Category list endpoints (Phase 20)
@@ -1506,10 +1564,15 @@ phase sequence.
 - [ ] InventoryTransaction writes on checkout reservation (Phase 21)
 
 ## Orders
-- [ ] Vendor-order status transition endpoint (Phase 19)
-- [ ] Customer cancellation endpoint, early states only (Phase 19)
-- [ ] MasterOrder status derivation logic (Phase 19)
-- [ ] Concurrent checkout e2e proof (Phase 18)
+- [x] Vendor-order status transition endpoint (Phase 19) — completed
+      2026-08-22
+- [x] Customer cancellation endpoint, early states only (Phase 19) — NOT
+      built; resolved as out of scope, not deferred (see Section 22:
+      `docs/database/order.md` §48 supports no customer mutation
+      capability, only vendor-initiated fulfillment updates)
+- [x] MasterOrder status derivation logic (Phase 19) — completed
+      2026-08-22, `src/orders/utils/master-order-status.ts`
+- [x] Concurrent checkout e2e proof (Phase 18) — completed 2026-08-22
 
 ## Payments
 - [x] Foundation complete (no further P0/P1 work in this plan)
@@ -1530,7 +1593,8 @@ phase sequence.
 - [x] Vendor verification/activation tests, unit + e2e (Phase 17) —
       completed 2026-08-22
 - [x] Concurrent checkout test (Phase 18) — completed 2026-08-22
-- [ ] Order lifecycle tests (Phase 19)
+- [x] Order lifecycle tests (Phase 19) — completed 2026-08-22 (43 unit +
+      15 e2e, including a concurrency sub-test)
 - [ ] List endpoint tests (Phase 20)
 - [ ] Variant/Inventory tests incl. concurrency (Phase 21)
 - [ ] Upload security tests (Phase 22)
@@ -1548,7 +1612,8 @@ phase sequence.
 ## Documentation
 - [x] `docs/database/vendor-shop.md` §22 update (post-Phase 17) —
       completed 2026-08-22
-- [ ] `docs/database/order.md` §58 update (post-Phase 19)
+- [x] `docs/database/order.md` §58 update (post-Phase 19) — completed
+      2026-08-22
 - [ ] `docs/database/catalog.md` §60 update (post-Phase 21/22)
 - [ ] `docs/API.md` refresh (Phase 25)
 - [ ] README refresh (Phase 25)
@@ -1634,11 +1699,17 @@ equivalent to an ADR:**
 | Precise `verificationStatus` transition matrix | Only the literally-drawn arrows in §6 are implemented: `PENDING→UNDER_REVIEW`, `UNDER_REVIEW→VERIFIED`, `PENDING/UNDER_REVIEW→REJECTED`. `PENDING→VERIFIED` (skipping `UNDER_REVIEW`) is rejected. `VERIFIED`/`REJECTED` are treated as terminal — no re-verification/re-application path exists. | `src/vendors/vendors.service.ts` (`ALLOWED_VERIFICATION_TRANSITIONS`), `docs/database/vendor-shop.md` §6/§22 |
 | Idempotency of re-applying the same transition | Treated as an invalid transition (409), not a no-op — no self-transition is drawn in §6, so none is implemented. Applies symmetrically to activation (re-activating an already-`ACTIVE` vendor is also 409). | Same as above; also `src/vendors/vendors.service.ts`'s `activate` method |
 
+**Resolved by Phase 19 (2026-08-22) — re-reading the actual source
+document, not a business decision:**
+
+| Formerly-open item | Resolution | Where recorded |
+|---|---|---|
+| Customer-vs-vendor-initiated split for `VendorOrder: PENDING/CONFIRMED → CANCELLED` | Re-reading `docs/database/order.md` §48 directly (rather than relying on ADR-2's own paraphrase of it) found **no textual basis** for a customer mutation capability — §48 lists only viewing rights for customers ("View their own MasterOrders... VendorOrders... OrderItems") and "Update fulfillment-related state" only for vendors. Vendor-initiated only; no customer-facing cancellation endpoint was built. This is a correction of ADR-2's own implementation-constraints note, which had speculated a customer path might exist — the correction is recorded here rather than silently overriding the ADR text. | `src/orders/vendor-orders.service.ts` class doc-comment, `docs/database/order.md` §31's update note |
+
 **Still genuinely open — unaffected by the four approved decisions:**
 
 | Decision | Domain | Why Needed | Current Evidence | Proposed Owner | Blocks |
 |---|---|---|---|---|---|
-| Customer-vs-vendor-initiated split for `VendorOrder: PENDING/CONFIRMED → CANCELLED` | Order | Determines who can call the cancellation path ADR-2 already approves | `order.md` §48 implies both customer and vendor have some cancellation-adjacent capability, exact split unstated | Project owner | Phase 19 (narrow — the transition itself is approved, only the caller-type split is open) |
 | `SIMPLE` product default-variant enforcement mechanism (DB partial-unique-index vs. app-transaction check) | Catalog | Determines Phase 21's schema-adjacent implementation approach | `catalog.md` §20/§22: invariant stated, mechanism not specified; not covered by ADR-4 (which addresses authorization, not this invariant) | Project owner | Phase 21 (specifically the default-variant guarantee — variant CRUD itself is not blocked) |
 | Exact point a `SALE`-type `InventoryTransaction` is recorded | Catalog/Order | Determines whether Phase 21 or a later phase writes this transaction type | `catalog.md` §39: "will be defined by the Order and Payment lifecycle" — order lifecycle is only partially resolved by ADR-2/3 | Project owner | Any phase implementing `SALE` transactions specifically (not blocking Phase 21's core Variant/Inventory CRUD) |
 | Commission rate/type (percentage value, who sets it, per-vendor override) | Wallet/Commission | Determines whether any Wallet/Commission work can start at all | `wallet-commission.md` — no concrete rate specified anywhere | Project owner | All Wallet/Commission work (entire domain remains FUTURE until resolved) |
