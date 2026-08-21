@@ -1522,6 +1522,15 @@ note
 
 where applicable.
 
+> **Approved (2026-08-22, ADR-4):** inventory view/restock/adjustment are
+> vendor-self-service, scoped through the ownership chain
+> `User → Vendor → Product → ProductVariant → Inventory`, with the
+> existing project-wide ADMIN-bypass convention applied where that
+> pattern already applies elsewhere — not an ADMIN-only permission set.
+> `createdBy` is always the authenticated caller, never client-supplied.
+> See `docs/remaining-architecture-plan.md`'s Architecture Decision
+> Register. Not yet implemented at the application layer as of this note.
+
 ---
 
 # 52. Product Image Security

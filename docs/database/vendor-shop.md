@@ -254,6 +254,15 @@ status = ACTIVE
 Verification and activation may be implemented as separate service
 operations so that the business rules remain explicit.
 
+> **Approved (2026-08-22, ADR-1):** implemented as two separate
+> ADMIN-only operations — `PATCH /api/vendors/:vendorId/verification` and
+> `PATCH /api/vendors/:vendorId/activation` — not a combined status
+> endpoint. See `docs/remaining-architecture-plan.md`'s Architecture
+> Decision Register for the full record. Not yet implemented at the
+> application layer as of this note; the precise transition matrix beyond
+> the shape shown above (e.g. whether `PENDING → VERIFIED` may skip
+> `UNDER_REVIEW`, whether `REJECTED` is terminal) remains open.
+
 ---
 
 # 7. Shop

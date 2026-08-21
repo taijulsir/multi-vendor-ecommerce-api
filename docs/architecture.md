@@ -1057,6 +1057,15 @@ architecturally covered by the same rule and the same intended pattern
 but have no controllers yet — ownership checks for them will be added
 alongside those controllers, not speculatively ahead of them.
 
+`ProductVariant`/`Inventory` are a specific case of this: the ownership
+chain `User → Vendor → Product → ProductVariant → Inventory` has been
+explicitly approved (Architecture Decision Register, ADR-4, in
+`docs/remaining-architecture-plan.md`) as an extension of the same
+`OwnershipService` pattern one hop further through `ProductVariant`, with
+inventory adjustment being vendor-self-service rather than ADMIN-only.
+Neither `ProductVariant` nor `Inventory` has a controller yet — this
+paragraph records the *approved design*, not current behavior.
+
 `Category` (Phase 11, `docs/database/catalog.md` §2) is explicitly
 **not** vendor-owned — it has no `vendorId`/`userId` column at all, and
 is a shared, platform-wide taxonomy. Its mutating endpoints
@@ -1638,6 +1647,41 @@ The goal is to maintain a backend that is:
 * Scalable
 * Easy to reason about
 * Consistent as new business domains are introduced
+
+---
+
+# 39. Architecture Decisions Approved, Pending Implementation
+
+Some architectural decisions relevant to upcoming work have been formally
+approved by the project owner but are not yet reflected in the
+application layer. The full, authoritative record — including exact
+approved behavior, source basis, and implementation constraints — lives
+in `docs/remaining-architecture-plan.md`'s **Architecture Decision
+Register**, not here, to avoid duplicating a living planning document
+inside this architectural reference. In summary, locked for future
+phases:
+
+* Vendor verification and activation are two separate ADMIN-only
+  operations (ADR-1) — extends §22-23's existing RBAC/ownership model,
+  no new authorization mechanism.
+* The `VendorOrder` fulfillment lifecycle is scoped to
+  `PENDING → CONFIRMED → PROCESSING → READY_TO_SHIP → SHIPPED →
+  DELIVERED` plus early-state cancellation only (ADR-2) — no
+  post-`PROCESSING` cancellation or return workflow is in scope.
+* `MasterOrder.status` is derived from its `VendorOrder`s, never
+  client-settable (ADR-3) — a direct application of §7 of
+  `docs/database/order.md`'s existing requirement.
+* Inventory ownership/authorization extends the existing
+  `User → Vendor → Product` ownership chain one hop further through
+  `ProductVariant → Inventory`, with adjustment being vendor-self-service
+  plus the existing ADMIN-bypass convention (ADR-4) — see §23's updated
+  note above.
+
+None of these decisions change this document's existing architectural
+principles (§18-26) — they are applications of those principles to
+domains that don't have controllers yet, per the "existence of a domain
+does not mean its implementation must be created immediately" rule in
+§5.
 
 ````
 

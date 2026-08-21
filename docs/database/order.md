@@ -244,6 +244,14 @@ fulfilled.
 Therefore the MasterOrder status must not simply be updated independently
 without considering its child VendorOrders.
 
+> **Approved (2026-08-22, ADR-3):** `MasterOrder.status` is derived
+> server-side from child `VendorOrder` states and is never directly
+> client-settable. All children `DELIVERED` → `FULFILLED`; some but not
+> all → `PARTIALLY_FULFILLED`. See `docs/remaining-architecture-plan.md`'s
+> Architecture Decision Register. Not yet implemented — the precise
+> bucket mapping for every intermediate combination remains an
+> implementation detail for Phase 19.
+
 ---
 
 # 8. VendorOrder
@@ -843,6 +851,15 @@ COMPLETED     → return/refund flow
 The exact cancellation rules will be finalized together with Payment,
 Refund, and Fulfillment domains.
 
+> **Approved (2026-08-22, ADR-2):** the in-scope MVP progression is
+> `PENDING → CONFIRMED → PROCESSING → READY_TO_SHIP → SHIPPED →
+> DELIVERED`, with cancellation approved only for `PENDING`/`CONFIRMED`.
+> `PROCESSING → CANCELLED`, `SHIPPED → CANCELLED`, and any return/refund-
+> driven fulfillment flow are explicitly **excluded from this MVP** by
+> decision, not merely unanswered. See
+> `docs/remaining-architecture-plan.md`'s Architecture Decision Register.
+> Not yet implemented at the application layer as of this note.
+
 ---
 
 # 32. Vendor-Specific Cancellation
@@ -1363,6 +1380,12 @@ FULFILLED
 
 The exact transition graph will be finalized after Payment, Fulfillment,
 and Refund requirements are documented.
+
+> **Approved (2026-08-22, ADR-2/ADR-3):** the graph above is narrowed —
+> `PROCESSING → CANCELLED` and any `* → COMPLETED` trigger are not part
+> of this MVP. See `docs/database/order.md` §31's update note and
+> `docs/remaining-architecture-plan.md`'s Architecture Decision Register
+> for the full record. Not yet implemented.
 
 ---
 
