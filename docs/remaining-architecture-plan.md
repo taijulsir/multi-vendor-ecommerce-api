@@ -12,11 +12,18 @@ Based on          docs/project-completion-audit.md (primary current-state
                    src/**, test/**, postman/**, Dockerfile,
                    docker-compose.yml, .github/workflows/, eslint.config.mjs,
                    package.json, .env.example
-Status of P0/P1   NONE implemented — this document is the plan, not the work
+Status of P0/P1   Phase 17 (P0.1, Vendor Verification/Activation)
+                   IMPLEMENTED as of 2026-08-22 — see Section 6's Phase 17
+                   entry and `docs/database/vendor-shop.md` §22.
+                   Phases 18-26 NOT started; this document remains the plan
+                   for all remaining work.
 Baseline           2026-08-22 — Architecture Decision Register added below;
                     four decisions locked by explicit project-owner approval
-                    (see register). No implementation occurred as part of
-                    that update — approval status only.
+                    (see register). ADR-1 through ADR-4 remain APPROVED and
+                    unmodified; only ADR-1's corresponding phase (17) has
+                    since been implemented — the register itself records
+                    decisions, not implementation status, and is not
+                    rewritten here.
 ```
 
 ---
@@ -185,7 +192,7 @@ model), and no `WalletTransaction` is ever created.
 |---|:---:|:---:|:---:|:---:|:---:|---|---|
 | Health | ✅ | ✅ | ✅ | ✅ | ✅ | IMPLEMENTED | safe |
 | Identity & Access | ✅ | ✅ | ✅ | ✅ | ✅ | IMPLEMENTED | safe |
-| Vendor | ✅ | ✅ | ⚠️ create/view only | ✅ | ✅ | PARTIALLY IMPLEMENTED | safe, narrowly (see §17) |
+| Vendor | ✅ | ✅ | ✅ create/view + verification/activation (Phase 17) | ✅ | ✅ | IMPLEMENTED (narrow transition matrix — see `docs/database/vendor-shop.md` §22) | safe |
 | Shop | ✅ | ✅ | ✅ | ✅ | ✅ | IMPLEMENTED | safe |
 | Category | ✅ | ✅ | ⚠️ no list-pagination convention used | ✅ | ✅ | IMPLEMENTED | safe |
 | Product | ✅ | ✅ | ⚠️ no list endpoint | ✅ | ✅ | IMPLEMENTED (core fields) | safe, narrowly (see §17) |
@@ -228,6 +235,14 @@ prior audit's word:
   deferred; see Section 18.
 - **Vendor creation, Shop CRUD, Category CRUD, Product create/view/update**
   — all owner-scoped, all tested, all Swagger-complete.
+- **Vendor verification/activation (Phase 17, ADR-1)** — two ADMIN-only
+  endpoints (`PATCH /vendors/:vendorId/verification`,
+  `PATCH /vendors/:vendorId/activation`), the exact narrow transition
+  matrix ADR-1/Phase 17 committed to (see §6's update note in
+  `docs/database/vendor-shop.md`), tested (unit + e2e), Swagger-complete.
+  **Do not rebuild or reopen the transition matrix** — re-verification out
+  of `REJECTED`, skipping `UNDER_REVIEW`, and reactivation from
+  `SUSPENDED`/`FROZEN` remain deliberately unimplemented, not forgotten.
 - **Cart** — atomic add-item transaction, one-active-cart-per-user partial
   unique index, price always server-derived.
 - **Checkout** — atomic multi-vendor order split, race-safe inventory
@@ -481,6 +496,23 @@ dependency analysis.
   longer open. Only the narrow items in Section 22 (precise transition
   matrix, re-apply idempotency) remain, neither of which blocks starting
   this phase.
+
+> **STATUS: IMPLEMENTED (2026-08-22).** Both endpoints exist exactly as
+> planned above, at `src/vendors/vendors.controller.ts`/
+> `vendors.service.ts`, with `src/vendors/dto/update-vendor-verification.dto.ts`
+> (activation takes no body). Files affected matched the prediction above
+> except the e2e coverage: it was added to the existing
+> `test/shops.e2e-spec.ts` (already contains a `Vendors + Shops API`
+> describe block covering vendor onboarding) rather than a new
+> `test/vendors.e2e-spec.ts` file, since a dedicated vendor e2e file did
+> not otherwise exist and splitting it out would have fragmented existing
+> coverage for no benefit. The re-apply-idempotency question was resolved
+> narrowly for this phase (not deferred): re-applying an already-current
+> state, or any transition with no documented outgoing arrow, is treated
+> as an invalid transition (409), not a no-op — see this phase's final
+> report for the full reasoning. 32 new unit tests + 22 new e2e tests
+> added, all passing; full suite (325 unit / 240 e2e) green;
+> `npx prisma validate`/`migrate status` clean with zero schema changes.
 
 ## Phase 18 — Concurrent Checkout E2E Proof
 
@@ -1296,17 +1328,20 @@ match, not introduce a new testing pattern):
 
 ## SAFE TO CLAIM NOW
 
-(Restated from `docs/project-completion-audit.md` Part 15, re-confirmed
-this session — no change since that audit.)
+(Restated from `docs/project-completion-audit.md` Part 15, updated
+2026-08-22 — Vendor verification/activation added following Phase 17.)
 
 - JWT authentication with refresh-token rotation and reuse detection.
 - RBAC with live database re-evaluation.
 - Dual resource-ownership model (vendor-owned via guards, user-owned via
   direct scoping).
+- Vendor onboarding with ADMIN-gated verification and activation
+  (Phase 17) — a vendor can be taken from application to fully `ACTIVE`
+  entirely through the documented API, not just manual DB seeding.
 - Atomic, transactional multi-vendor checkout with race-safe inventory
   reservation.
 - Two-layer webhook idempotency.
-- 300 unit + 218 e2e tests, including adversarial scenarios.
+- 325 unit + 240 e2e tests, including adversarial scenarios.
 - Verified Docker build + CI pipeline against real Postgres/Redis.
 
 ## DO NOT CLAIM YET
@@ -1318,8 +1353,9 @@ this session — no change since that audit.)
 - Order fulfillment lifecycle — becomes safe (for the implemented subset
   only — see Section 9's BLOCKED list, which will likely remain partially
   true even after Phase 19) after Phase 19.
-- Vendor verification/onboarding as a complete flow — becomes safe after
-  Phase 17.
+- A full vendor re-verification/appeals workflow (rejected vendors
+  re-applying) — deliberately not implemented in Phase 17; only the
+  narrow, documented transition matrix is safe to claim.
 - Real payment gateway integration — remains FUTURE, out of this plan.
 - Coupon/promotion engine — remains FUTURE, out of this plan.
 - Wallet/payout system — remains FUTURE, out of this plan.
@@ -1414,10 +1450,11 @@ phase sequence.
 ## Architecture
 - [x] Current architecture reconstructed and verified (Section 2)
 - [x] Remaining architecture planned (this document)
-- [ ] Phase 17-26 execution (not started — this document is the plan only)
+- [ ] Phase 17-26 execution (Phase 17 complete as of 2026-08-22; Phases
+      18-26 not started)
 
 ## Backend
-- [ ] Vendor verification/activation (Phase 17)
+- [x] Vendor verification/activation (Phase 17) — completed 2026-08-22
 - [ ] Order status lifecycle — well-defined subset (Phase 19)
 
 ## Catalog
@@ -1453,6 +1490,8 @@ phase sequence.
 - [ ] Graceful shutdown (Phase 23)
 
 ## Testing
+- [x] Vendor verification/activation tests, unit + e2e (Phase 17) —
+      completed 2026-08-22
 - [ ] Concurrent checkout test (Phase 18)
 - [ ] Order lifecycle tests (Phase 19)
 - [ ] List endpoint tests (Phase 20)
@@ -1470,7 +1509,8 @@ phase sequence.
 - [ ] Product Image folder, multipart support (Phase 25)
 
 ## Documentation
-- [ ] `docs/database/vendor-shop.md` §22 update (post-Phase 17)
+- [x] `docs/database/vendor-shop.md` §22 update (post-Phase 17) —
+      completed 2026-08-22
 - [ ] `docs/database/order.md` §58 update (post-Phase 19)
 - [ ] `docs/database/catalog.md` §60 update (post-Phase 21/22)
 - [ ] `docs/API.md` refresh (Phase 25)
@@ -1547,12 +1587,20 @@ open, kept here only as a changelog so the resolution is traceable:**
 | Inventory `adjust` endpoint authorization | Vendor-self-service (own `ProductVariant`s only), with the existing ADMIN-bypass convention applied where the pattern already applies elsewhere | ADR-4 |
 | `VendorOrder: PROCESSING → CANCELLED`, `SHIPPED → *`, return/return-request, `MasterOrder → COMPLETED` | Explicitly **excluded from MVP scope** by decision (not merely unanswered) — do not implement | ADR-2 |
 
+**Resolved by Phase 17's own implementation choice (2026-08-22) — an
+implementation-level default, not a project-owner business decision, so
+flagged here for visibility/review rather than silently treated as
+equivalent to an ADR:**
+
+| Formerly-open item | Implementation choice made | Where recorded |
+|---|---|---|
+| Precise `verificationStatus` transition matrix | Only the literally-drawn arrows in §6 are implemented: `PENDING→UNDER_REVIEW`, `UNDER_REVIEW→VERIFIED`, `PENDING/UNDER_REVIEW→REJECTED`. `PENDING→VERIFIED` (skipping `UNDER_REVIEW`) is rejected. `VERIFIED`/`REJECTED` are treated as terminal — no re-verification/re-application path exists. | `src/vendors/vendors.service.ts` (`ALLOWED_VERIFICATION_TRANSITIONS`), `docs/database/vendor-shop.md` §6/§22 |
+| Idempotency of re-applying the same transition | Treated as an invalid transition (409), not a no-op — no self-transition is drawn in §6, so none is implemented. Applies symmetrically to activation (re-activating an already-`ACTIVE` vendor is also 409). | Same as above; also `src/vendors/vendors.service.ts`'s `activate` method |
+
 **Still genuinely open — unaffected by the four approved decisions:**
 
 | Decision | Domain | Why Needed | Current Evidence | Proposed Owner | Blocks |
 |---|---|---|---|---|---|
-| Idempotency behavior of re-applying the same vendor-verification transition (no-op vs. 409 conflict) | Vendor | Determines Phase 17 test expectations | Not addressed anywhere in `vendor-shop.md`; ADR-1 approves the endpoint shape but not this detail | Project owner | Phase 17 completion criteria |
-| Precise `verificationStatus` transition matrix beyond the general shape (e.g. can `PENDING → VERIFIED` skip `UNDER_REVIEW`? is `REJECTED` terminal?) | Vendor | Determines Phase 17's exact transition validation | `vendor-shop.md` §6 gives the shape, not the full matrix; ADR-1 explicitly flags this as still open | Project owner | Phase 17 (narrow — the two-endpoint shape itself is not blocked) |
 | Customer-vs-vendor-initiated split for `VendorOrder: PENDING/CONFIRMED → CANCELLED` | Order | Determines who can call the cancellation path ADR-2 already approves | `order.md` §48 implies both customer and vendor have some cancellation-adjacent capability, exact split unstated | Project owner | Phase 19 (narrow — the transition itself is approved, only the caller-type split is open) |
 | `SIMPLE` product default-variant enforcement mechanism (DB partial-unique-index vs. app-transaction check) | Catalog | Determines Phase 21's schema-adjacent implementation approach | `catalog.md` §20/§22: invariant stated, mechanism not specified; not covered by ADR-4 (which addresses authorization, not this invariant) | Project owner | Phase 21 (specifically the default-variant guarantee — variant CRUD itself is not blocked) |
 | Exact point a `SALE`-type `InventoryTransaction` is recorded | Catalog/Order | Determines whether Phase 21 or a later phase writes this transaction type | `catalog.md` §39: "will be defined by the Order and Payment lifecycle" — order lifecycle is only partially resolved by ADR-2/3 | Project owner | Any phase implementing `SALE` transactions specifically (not blocking Phase 21's core Variant/Inventory CRUD) |

@@ -254,14 +254,22 @@ status = ACTIVE
 Verification and activation may be implemented as separate service
 operations so that the business rules remain explicit.
 
-> **Approved (2026-08-22, ADR-1):** implemented as two separate
-> ADMIN-only operations — `PATCH /api/vendors/:vendorId/verification` and
+> **Approved (2026-08-22, ADR-1) and implemented (Phase 17, 2026-08-22):**
+> two separate ADMIN-only operations —
+> `PATCH /api/vendors/:vendorId/verification` and
 > `PATCH /api/vendors/:vendorId/activation` — not a combined status
 > endpoint. See `docs/remaining-architecture-plan.md`'s Architecture
-> Decision Register for the full record. Not yet implemented at the
-> application layer as of this note; the precise transition matrix beyond
-> the shape shown above (e.g. whether `PENDING → VERIFIED` may skip
-> `UNDER_REVIEW`, whether `REJECTED` is terminal) remains open.
+> Decision Register for the full record. The implemented transition
+> matrix is this phase's own narrow, documented reading of the arrows
+> drawn above: `PENDING→UNDER_REVIEW`, `UNDER_REVIEW→VERIFIED`,
+> `PENDING/UNDER_REVIEW→REJECTED` for verification, and
+> `PENDING+VERIFIED→ACTIVE` for activation. `VERIFIED` and `REJECTED` are
+> treated as terminal — **not implemented, and intentionally not
+> invented:** `PENDING → VERIFIED` skipping `UNDER_REVIEW`, any
+> re-verification/re-application path out of `REJECTED`, and any
+> reactivation path for `SUSPENDED`/`FROZEN`/`REJECTED` vendors (those
+> remain separate, undocumented administrative actions per §14, out of
+> this phase's scope).
 
 ---
 
@@ -733,21 +741,26 @@ Constraints                APPROVED
 
 Prisma models              IMPLEMENTED
 Database migration          CREATED
-API implementation          PARTIALLY IMPLEMENTED (Phase 10)
-Tests                       IMPLEMENTED (Phase 10, for what exists)
+API implementation          PARTIALLY IMPLEMENTED (Phases 10, 17)
+Tests                       IMPLEMENTED (Phases 10, 17, for what exists)
 ```
 
 > Phase 10 implemented vendor onboarding (`POST /api/vendors`,
 > `GET /api/vendors/me`) and shop creation/retrieval/update
 > (`POST /api/shops`, `GET /api/shops/slug/:slug`, `GET /api/shops/:shopId`,
-> `PATCH /api/shops/:shopId`) exactly as specified above. Vendor
-> verification/activation (the `PENDING → UNDER_REVIEW → VERIFIED` /
-> `→ ACTIVE` transitions in §6) are administrative operations — no
-> endpoint for them exists yet, so a vendor created today remains
-> `status=PENDING, verificationStatus=PENDING` indefinitely until that
-> administrative capability is built in a future phase. Shop deletion is
-> also not yet implemented (§15's soft-delete field exists on the model
-> but nothing sets it via the API).
+> `PATCH /api/shops/:shopId`) exactly as specified above.
+>
+> Phase 17 implemented vendor verification/activation as two separate
+> ADMIN-only endpoints — `PATCH /api/vendors/:vendorId/verification` and
+> `PATCH /api/vendors/:vendorId/activation` (ADR-1,
+> `docs/remaining-architecture-plan.md`'s Architecture Decision
+> Register). See §6's update note for the exact implemented transition
+> matrix and what was deliberately left unimplemented (skipping
+> `UNDER_REVIEW`, any re-application out of `REJECTED`, reactivation from
+> `SUSPENDED`/`FROZEN`). Neither endpoint touches `Shop` — Shop's own
+> status remains entirely independent of Vendor's, per §13. Shop deletion
+> is still not implemented (§15's soft-delete field exists on the model
+> but nothing sets it via the API) — unrelated to Phase 17, unchanged.
 
 This document represents the approved Vendor & Shop architecture for the
 initial multi-vendor e-commerce implementation.

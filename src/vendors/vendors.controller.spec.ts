@@ -8,6 +8,8 @@ describe('VendorsController', () => {
   const vendorsService = {
     createForUser: jest.fn(),
     findForUser: jest.fn(),
+    verify: jest.fn(),
+    activate: jest.fn(),
   };
 
   const user: SafeUser = {
@@ -49,6 +51,43 @@ describe('VendorsController', () => {
 
       await expect(controller.me(user)).resolves.toEqual(vendor);
       expect(vendorsService.findForUser).toHaveBeenCalledWith(user.id);
+    });
+  });
+
+  describe('verify', () => {
+    it('delegates to VendorsService.verify with the vendorId param and DTO, unaffected by any body-supplied identity field', async () => {
+      const dto = { verificationStatus: 'VERIFIED' as const };
+      const updated = {
+        id: 'target-vendor-uuid',
+        verificationStatus: 'VERIFIED',
+      };
+      vendorsService.verify.mockResolvedValue(updated);
+
+      await expect(
+        controller.verify('target-vendor-uuid', dto),
+      ).resolves.toEqual(updated);
+
+      expect(vendorsService.verify).toHaveBeenCalledWith(
+        'target-vendor-uuid',
+        dto,
+      );
+      expect(vendorsService.verify).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('activate', () => {
+    it('delegates to VendorsService.activate with the vendorId param, taking no request body', async () => {
+      const updated = { id: 'target-vendor-uuid', status: 'ACTIVE' };
+      vendorsService.activate.mockResolvedValue(updated);
+
+      await expect(controller.activate('target-vendor-uuid')).resolves.toEqual(
+        updated,
+      );
+
+      expect(vendorsService.activate).toHaveBeenCalledWith(
+        'target-vendor-uuid',
+      );
+      expect(vendorsService.activate).toHaveBeenCalledTimes(1);
     });
   });
 });

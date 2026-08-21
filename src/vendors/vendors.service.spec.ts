@@ -10,6 +10,8 @@ describe('VendorsService', () => {
     vendor: {
       create: jest.fn(),
       findFirst: jest.fn(),
+      updateMany: jest.fn(),
+      findUniqueOrThrow: jest.fn(),
     },
   };
 
@@ -115,6 +117,283 @@ describe('VendorsService', () => {
 
       await expect(service.findForUser('user-uuid')).rejects.toBeInstanceOf(
         NotFoundException,
+      );
+    });
+  });
+
+  describe('verify', () => {
+    const vendorId = 'vendor-uuid';
+
+    it('allows PENDING → UNDER_REVIEW', async () => {
+      prisma.vendor.findFirst.mockResolvedValue({
+        id: vendorId,
+        verificationStatus: 'PENDING',
+      });
+      prisma.vendor.updateMany.mockResolvedValue({ count: 1 });
+      const updated = { id: vendorId, verificationStatus: 'UNDER_REVIEW' };
+      prisma.vendor.findUniqueOrThrow.mockResolvedValue(updated);
+
+      await expect(
+        service.verify(vendorId, { verificationStatus: 'UNDER_REVIEW' }),
+      ).resolves.toEqual(updated);
+
+      expect(prisma.vendor.updateMany).toHaveBeenCalledWith({
+        where: { id: vendorId, verificationStatus: 'PENDING' },
+        data: { verificationStatus: 'UNDER_REVIEW' },
+      });
+    });
+
+    it('allows UNDER_REVIEW → VERIFIED', async () => {
+      prisma.vendor.findFirst.mockResolvedValue({
+        id: vendorId,
+        verificationStatus: 'UNDER_REVIEW',
+      });
+      prisma.vendor.updateMany.mockResolvedValue({ count: 1 });
+      prisma.vendor.findUniqueOrThrow.mockResolvedValue({
+        id: vendorId,
+        verificationStatus: 'VERIFIED',
+      });
+
+      await expect(
+        service.verify(vendorId, { verificationStatus: 'VERIFIED' }),
+      ).resolves.toEqual({ id: vendorId, verificationStatus: 'VERIFIED' });
+    });
+
+    it.each([
+      ['PENDING', 'REJECTED'],
+      ['UNDER_REVIEW', 'REJECTED'],
+    ])('allows %s → %s', async (from, to) => {
+      prisma.vendor.findFirst.mockResolvedValue({
+        id: vendorId,
+        verificationStatus: from,
+      });
+      prisma.vendor.updateMany.mockResolvedValue({ count: 1 });
+      prisma.vendor.findUniqueOrThrow.mockResolvedValue({
+        id: vendorId,
+        verificationStatus: to,
+      });
+
+      await expect(
+        service.verify(vendorId, {
+          verificationStatus: to as 'REJECTED',
+        }),
+      ).resolves.toEqual({ id: vendorId, verificationStatus: to });
+    });
+
+    it('rejects (409) PENDING → VERIFIED (skipping UNDER_REVIEW is not documented)', async () => {
+      prisma.vendor.findFirst.mockResolvedValue({
+        id: vendorId,
+        verificationStatus: 'PENDING',
+      });
+
+      await expect(
+        service.verify(vendorId, { verificationStatus: 'VERIFIED' }),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.vendor.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('rejects (409) re-applying VERIFIED to an already-VERIFIED vendor (no documented self-transition)', async () => {
+      prisma.vendor.findFirst.mockResolvedValue({
+        id: vendorId,
+        verificationStatus: 'VERIFIED',
+      });
+
+      await expect(
+        service.verify(vendorId, { verificationStatus: 'VERIFIED' }),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('rejects (409) any transition out of REJECTED (terminal — no re-application path is documented)', async () => {
+      prisma.vendor.findFirst.mockResolvedValue({
+        id: vendorId,
+        verificationStatus: 'REJECTED',
+      });
+
+      await expect(
+        service.verify(vendorId, { verificationStatus: 'UNDER_REVIEW' }),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('throws NotFoundException for a nonexistent vendor', async () => {
+      prisma.vendor.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.verify(vendorId, { verificationStatus: 'UNDER_REVIEW' }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.vendor.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException for a soft-deleted vendor (findFirst already filters deletedAt: null)', async () => {
+      prisma.vendor.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.verify(vendorId, { verificationStatus: 'UNDER_REVIEW' }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.vendor.findFirst).toHaveBeenCalledWith({
+        where: { id: vendorId, deletedAt: null },
+      });
+    });
+
+    it('rejects (409) when a concurrent request already changed the state (updateMany affects 0 rows)', async () => {
+      prisma.vendor.findFirst.mockResolvedValue({
+        id: vendorId,
+        verificationStatus: 'PENDING',
+      });
+      prisma.vendor.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.verify(vendorId, { verificationStatus: 'UNDER_REVIEW' }),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.vendor.findUniqueOrThrow).not.toHaveBeenCalled();
+    });
+
+    it('never passes any field other than verificationStatus to the update', async () => {
+      prisma.vendor.findFirst.mockResolvedValue({
+        id: vendorId,
+        verificationStatus: 'PENDING',
+      });
+      prisma.vendor.updateMany.mockResolvedValue({ count: 1 });
+      prisma.vendor.findUniqueOrThrow.mockResolvedValue({ id: vendorId });
+
+      await service.verify(vendorId, { verificationStatus: 'UNDER_REVIEW' });
+
+      expect(prisma.vendor.updateMany).toHaveBeenCalledWith({
+        where: expect.objectContaining({ id: vendorId }) as unknown,
+        data: { verificationStatus: 'UNDER_REVIEW' },
+      });
+    });
+
+    it('propagates unrelated database errors', async () => {
+      prisma.vendor.findFirst.mockRejectedValue(
+        new Error('connection terminated unexpectedly'),
+      );
+
+      await expect(
+        service.verify(vendorId, { verificationStatus: 'UNDER_REVIEW' }),
+      ).rejects.toThrow('connection terminated unexpectedly');
+    });
+  });
+
+  describe('activate', () => {
+    const vendorId = 'vendor-uuid';
+
+    it('activates a PENDING + VERIFIED vendor', async () => {
+      prisma.vendor.findFirst.mockResolvedValue({
+        id: vendorId,
+        status: 'PENDING',
+        verificationStatus: 'VERIFIED',
+      });
+      prisma.vendor.updateMany.mockResolvedValue({ count: 1 });
+      const updated = { id: vendorId, status: 'ACTIVE' };
+      prisma.vendor.findUniqueOrThrow.mockResolvedValue(updated);
+
+      await expect(service.activate(vendorId)).resolves.toEqual(updated);
+
+      expect(prisma.vendor.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: vendorId,
+          status: 'PENDING',
+          verificationStatus: 'VERIFIED',
+        },
+        data: { status: 'ACTIVE' },
+      });
+    });
+
+    it('rejects (409) a vendor that is not yet VERIFIED', async () => {
+      prisma.vendor.findFirst.mockResolvedValue({
+        id: vendorId,
+        status: 'PENDING',
+        verificationStatus: 'PENDING',
+      });
+
+      await expect(service.activate(vendorId)).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+      expect(prisma.vendor.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('rejects (409) an already-ACTIVE vendor (no documented re-activation path)', async () => {
+      prisma.vendor.findFirst.mockResolvedValue({
+        id: vendorId,
+        status: 'ACTIVE',
+        verificationStatus: 'VERIFIED',
+      });
+
+      await expect(service.activate(vendorId)).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+    });
+
+    it("rejects (409) a FROZEN vendor (reactivation from FROZEN/SUSPENDED is out of this phase's scope)", async () => {
+      prisma.vendor.findFirst.mockResolvedValue({
+        id: vendorId,
+        status: 'FROZEN',
+        verificationStatus: 'VERIFIED',
+      });
+
+      await expect(service.activate(vendorId)).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+    });
+
+    it('throws NotFoundException for a nonexistent vendor', async () => {
+      prisma.vendor.findFirst.mockResolvedValue(null);
+
+      await expect(service.activate(vendorId)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(prisma.vendor.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException for a soft-deleted vendor', async () => {
+      prisma.vendor.findFirst.mockResolvedValue(null);
+
+      await expect(service.activate(vendorId)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(prisma.vendor.findFirst).toHaveBeenCalledWith({
+        where: { id: vendorId, deletedAt: null },
+      });
+    });
+
+    it('rejects (409) when a concurrent request already changed the state (updateMany affects 0 rows)', async () => {
+      prisma.vendor.findFirst.mockResolvedValue({
+        id: vendorId,
+        status: 'PENDING',
+        verificationStatus: 'VERIFIED',
+      });
+      prisma.vendor.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.activate(vendorId)).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+      expect(prisma.vendor.findUniqueOrThrow).not.toHaveBeenCalled();
+    });
+
+    it('never passes any field other than status to the update', async () => {
+      prisma.vendor.findFirst.mockResolvedValue({
+        id: vendorId,
+        status: 'PENDING',
+        verificationStatus: 'VERIFIED',
+      });
+      prisma.vendor.updateMany.mockResolvedValue({ count: 1 });
+      prisma.vendor.findUniqueOrThrow.mockResolvedValue({ id: vendorId });
+
+      await service.activate(vendorId);
+
+      expect(prisma.vendor.updateMany).toHaveBeenCalledWith({
+        where: expect.objectContaining({ id: vendorId }) as unknown,
+        data: { status: 'ACTIVE' },
+      });
+    });
+
+    it('propagates unrelated database errors', async () => {
+      prisma.vendor.findFirst.mockRejectedValue(
+        new Error('connection terminated unexpectedly'),
+      );
+
+      await expect(service.activate(vendorId)).rejects.toThrow(
+        'connection terminated unexpectedly',
       );
     });
   });

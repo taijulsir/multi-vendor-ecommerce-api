@@ -184,6 +184,385 @@ describe('Vendors + Shops API (e2e)', () => {
   });
 
   // -----------------------------------------------------------------
+  // Vendor verification / activation (Phase 17, ADR-1)
+  // -----------------------------------------------------------------
+  describe('Vendor Verification / Activation', () => {
+    let adminUser: { id: string; accessToken: string };
+    let nonAdminUser: { id: string; accessToken: string };
+
+    const createAdmin = async (firstName: string) => {
+      const adminRole = await prisma.role.findUniqueOrThrow({
+        where: { name: 'ADMIN' },
+      });
+      const admin = await registerAndLogin(firstName);
+      await prisma.userRole.create({
+        data: { userId: admin.id, roleId: adminRole.id },
+      });
+      return admin;
+    };
+
+    const createVendorRecord = async (
+      overrides: {
+        status?: 'PENDING' | 'ACTIVE' | 'SUSPENDED' | 'FROZEN' | 'REJECTED';
+        verificationStatus?:
+          'PENDING' | 'UNDER_REVIEW' | 'VERIFIED' | 'REJECTED';
+        deletedAt?: Date;
+      } = {},
+    ) => {
+      const owner = await registerAndLogin('VerifActOwner');
+      const vendor = await prisma.vendor.create({
+        data: {
+          userId: owner.id,
+          businessName: 'Verification Fixture Business',
+          status: overrides.status ?? 'PENDING',
+          verificationStatus: overrides.verificationStatus ?? 'PENDING',
+          deletedAt: overrides.deletedAt,
+        },
+      });
+      return { owner, vendor };
+    };
+
+    beforeAll(async () => {
+      adminUser = await createAdmin('VerifActAdmin');
+      nonAdminUser = await registerAndLogin('VerifActNonAdmin');
+    });
+
+    describe('PATCH /api/vendors/:vendorId/verification', () => {
+      it('allows an ADMIN to move a PENDING vendor to UNDER_REVIEW', async () => {
+        const { vendor } = await createVendorRecord();
+
+        const response = await request(app.getHttpServer())
+          .patch(`/api/vendors/${vendor.id}/verification`)
+          .set('Authorization', `Bearer ${adminUser.accessToken}`)
+          .send({ verificationStatus: 'UNDER_REVIEW' })
+          .expect(200);
+
+        expect(response.body.verificationStatus).toBe('UNDER_REVIEW');
+        expect(response.body.status).toBe('PENDING');
+
+        await prisma.vendor.delete({ where: { id: vendor.id } });
+      });
+
+      it('allows an ADMIN to move an UNDER_REVIEW vendor to VERIFIED', async () => {
+        const { vendor } = await createVendorRecord({
+          verificationStatus: 'UNDER_REVIEW',
+        });
+
+        const response = await request(app.getHttpServer())
+          .patch(`/api/vendors/${vendor.id}/verification`)
+          .set('Authorization', `Bearer ${adminUser.accessToken}`)
+          .send({ verificationStatus: 'VERIFIED' })
+          .expect(200);
+
+        expect(response.body.verificationStatus).toBe('VERIFIED');
+
+        await prisma.vendor.delete({ where: { id: vendor.id } });
+      });
+
+      it('rejects (409) skipping UNDER_REVIEW (PENDING → VERIFIED is not a documented transition)', async () => {
+        const { vendor } = await createVendorRecord();
+
+        await request(app.getHttpServer())
+          .patch(`/api/vendors/${vendor.id}/verification`)
+          .set('Authorization', `Bearer ${adminUser.accessToken}`)
+          .send({ verificationStatus: 'VERIFIED' })
+          .expect(409);
+
+        await prisma.vendor.delete({ where: { id: vendor.id } });
+      });
+
+      it('rejects (409) re-verifying an already-VERIFIED vendor', async () => {
+        const { vendor } = await createVendorRecord({
+          verificationStatus: 'VERIFIED',
+        });
+
+        await request(app.getHttpServer())
+          .patch(`/api/vendors/${vendor.id}/verification`)
+          .set('Authorization', `Bearer ${adminUser.accessToken}`)
+          .send({ verificationStatus: 'VERIFIED' })
+          .expect(409);
+
+        await prisma.vendor.delete({ where: { id: vendor.id } });
+      });
+
+      it('rejects (403) the vendor attempting to verify itself', async () => {
+        const { owner, vendor } = await createVendorRecord();
+
+        await request(app.getHttpServer())
+          .patch(`/api/vendors/${vendor.id}/verification`)
+          .set('Authorization', `Bearer ${owner.accessToken}`)
+          .send({ verificationStatus: 'UNDER_REVIEW' })
+          .expect(403);
+
+        await prisma.vendor.delete({ where: { id: vendor.id } });
+      });
+
+      it('rejects (403) a non-ADMIN, non-owner authenticated user', async () => {
+        const { vendor } = await createVendorRecord();
+
+        await request(app.getHttpServer())
+          .patch(`/api/vendors/${vendor.id}/verification`)
+          .set('Authorization', `Bearer ${nonAdminUser.accessToken}`)
+          .send({ verificationStatus: 'UNDER_REVIEW' })
+          .expect(403);
+
+        await prisma.vendor.delete({ where: { id: vendor.id } });
+      });
+
+      it('rejects (401) an unauthenticated request', async () => {
+        const { vendor } = await createVendorRecord();
+
+        await request(app.getHttpServer())
+          .patch(`/api/vendors/${vendor.id}/verification`)
+          .send({ verificationStatus: 'UNDER_REVIEW' })
+          .expect(401);
+
+        await prisma.vendor.delete({ where: { id: vendor.id } });
+      });
+
+      it('a spoofed userId in the body cannot substitute for ADMIN authorization', async () => {
+        const { vendor } = await createVendorRecord();
+
+        await request(app.getHttpServer())
+          .patch(`/api/vendors/${vendor.id}/verification`)
+          .set('Authorization', `Bearer ${nonAdminUser.accessToken}`)
+          .send({
+            verificationStatus: 'UNDER_REVIEW',
+            userId: adminUser.id,
+          })
+          .expect((res) => {
+            // Either rejected by whitelist validation (400, unknown
+            // property) or by authorization (403) — never a success.
+            if (![400, 403].includes(res.status)) {
+              throw new Error(`Unexpected status ${res.status}`);
+            }
+          });
+
+        await prisma.vendor.delete({ where: { id: vendor.id } });
+      });
+
+      it('rejects (400) a body attempting to set unrelated Vendor fields', async () => {
+        const { vendor } = await createVendorRecord();
+
+        await request(app.getHttpServer())
+          .patch(`/api/vendors/${vendor.id}/verification`)
+          .set('Authorization', `Bearer ${adminUser.accessToken}`)
+          .send({
+            verificationStatus: 'UNDER_REVIEW',
+            status: 'ACTIVE',
+            deletedAt: null,
+            businessName: 'Renamed',
+          })
+          .expect(400);
+
+        await prisma.vendor.delete({ where: { id: vendor.id } });
+      });
+
+      it('returns 404 for a nonexistent vendor', async () => {
+        await request(app.getHttpServer())
+          .patch(`/api/vendors/${randomUUID()}/verification`)
+          .set('Authorization', `Bearer ${adminUser.accessToken}`)
+          .send({ verificationStatus: 'UNDER_REVIEW' })
+          .expect(404);
+      });
+
+      it('returns 404 for a soft-deleted vendor', async () => {
+        const { vendor } = await createVendorRecord({
+          deletedAt: new Date(),
+        });
+
+        await request(app.getHttpServer())
+          .patch(`/api/vendors/${vendor.id}/verification`)
+          .set('Authorization', `Bearer ${adminUser.accessToken}`)
+          .send({ verificationStatus: 'UNDER_REVIEW' })
+          .expect(404);
+
+        await prisma.vendor.delete({ where: { id: vendor.id } });
+      });
+
+      it('does not mutate any Shop as a side effect', async () => {
+        const { vendor } = await createVendorRecord();
+        const shop = await prisma.shop.create({
+          data: {
+            vendorId: vendor.id,
+            name: 'Untouched Shop',
+            slug: uniqueSlug(),
+          },
+        });
+
+        await request(app.getHttpServer())
+          .patch(`/api/vendors/${vendor.id}/verification`)
+          .set('Authorization', `Bearer ${adminUser.accessToken}`)
+          .send({ verificationStatus: 'UNDER_REVIEW' })
+          .expect(200);
+
+        const unchangedShop = await prisma.shop.findUniqueOrThrow({
+          where: { id: shop.id },
+        });
+        expect(unchangedShop.status).toBe('ACTIVE');
+        expect(unchangedShop.updatedAt).toEqual(shop.updatedAt);
+
+        await prisma.shop.delete({ where: { id: shop.id } });
+        await prisma.vendor.delete({ where: { id: vendor.id } });
+      });
+    });
+
+    describe('PATCH /api/vendors/:vendorId/activation', () => {
+      it('activates a PENDING vendor whose verificationStatus is VERIFIED', async () => {
+        const { vendor } = await createVendorRecord({
+          verificationStatus: 'VERIFIED',
+        });
+
+        const response = await request(app.getHttpServer())
+          .patch(`/api/vendors/${vendor.id}/activation`)
+          .set('Authorization', `Bearer ${adminUser.accessToken}`)
+          .expect(200);
+
+        expect(response.body.status).toBe('ACTIVE');
+        expect(response.body.verificationStatus).toBe('VERIFIED');
+
+        await prisma.vendor.delete({ where: { id: vendor.id } });
+      });
+
+      it('rejects (409) activating a vendor that is not yet VERIFIED', async () => {
+        const { vendor } = await createVendorRecord();
+
+        await request(app.getHttpServer())
+          .patch(`/api/vendors/${vendor.id}/activation`)
+          .set('Authorization', `Bearer ${adminUser.accessToken}`)
+          .expect(409);
+
+        await prisma.vendor.delete({ where: { id: vendor.id } });
+      });
+
+      it('rejects (409) re-activating an already-ACTIVE vendor', async () => {
+        const { vendor } = await createVendorRecord({
+          status: 'ACTIVE',
+          verificationStatus: 'VERIFIED',
+        });
+
+        await request(app.getHttpServer())
+          .patch(`/api/vendors/${vendor.id}/activation`)
+          .set('Authorization', `Bearer ${adminUser.accessToken}`)
+          .expect(409);
+
+        await prisma.vendor.delete({ where: { id: vendor.id } });
+      });
+
+      it('rejects (403) the vendor attempting to activate itself', async () => {
+        const { owner, vendor } = await createVendorRecord({
+          verificationStatus: 'VERIFIED',
+        });
+
+        await request(app.getHttpServer())
+          .patch(`/api/vendors/${vendor.id}/activation`)
+          .set('Authorization', `Bearer ${owner.accessToken}`)
+          .expect(403);
+
+        await prisma.vendor.delete({ where: { id: vendor.id } });
+      });
+
+      it('rejects (403) a non-ADMIN, non-owner authenticated user', async () => {
+        const { vendor } = await createVendorRecord({
+          verificationStatus: 'VERIFIED',
+        });
+
+        await request(app.getHttpServer())
+          .patch(`/api/vendors/${vendor.id}/activation`)
+          .set('Authorization', `Bearer ${nonAdminUser.accessToken}`)
+          .expect(403);
+
+        await prisma.vendor.delete({ where: { id: vendor.id } });
+      });
+
+      it('rejects (401) an unauthenticated request', async () => {
+        const { vendor } = await createVendorRecord({
+          verificationStatus: 'VERIFIED',
+        });
+
+        await request(app.getHttpServer())
+          .patch(`/api/vendors/${vendor.id}/activation`)
+          .expect(401);
+
+        await prisma.vendor.delete({ where: { id: vendor.id } });
+      });
+
+      it('returns 404 for a nonexistent vendor', async () => {
+        await request(app.getHttpServer())
+          .patch(`/api/vendors/${randomUUID()}/activation`)
+          .set('Authorization', `Bearer ${adminUser.accessToken}`)
+          .expect(404);
+      });
+
+      it('returns 404 for a soft-deleted vendor', async () => {
+        const { vendor } = await createVendorRecord({
+          verificationStatus: 'VERIFIED',
+          deletedAt: new Date(),
+        });
+
+        await request(app.getHttpServer())
+          .patch(`/api/vendors/${vendor.id}/activation`)
+          .set('Authorization', `Bearer ${adminUser.accessToken}`)
+          .expect(404);
+
+        await prisma.vendor.delete({ where: { id: vendor.id } });
+      });
+
+      it('does not mutate any Shop or other unrelated resource as a side effect', async () => {
+        const { vendor } = await createVendorRecord({
+          verificationStatus: 'VERIFIED',
+        });
+        const shop = await prisma.shop.create({
+          data: {
+            vendorId: vendor.id,
+            name: 'Untouched Shop',
+            slug: uniqueSlug(),
+          },
+        });
+
+        await request(app.getHttpServer())
+          .patch(`/api/vendors/${vendor.id}/activation`)
+          .set('Authorization', `Bearer ${adminUser.accessToken}`)
+          .expect(200);
+
+        const unchangedShop = await prisma.shop.findUniqueOrThrow({
+          where: { id: shop.id },
+        });
+        expect(unchangedShop.status).toBe('ACTIVE');
+        expect(unchangedShop.updatedAt).toEqual(shop.updatedAt);
+
+        await prisma.shop.delete({ where: { id: shop.id } });
+        await prisma.vendor.delete({ where: { id: vendor.id } });
+      });
+
+      it('verification and activation stay independent: activating never changes verificationStatus, and verifying never changes status', async () => {
+        const { vendor } = await createVendorRecord({
+          verificationStatus: 'VERIFIED',
+        });
+
+        const activateResponse = await request(app.getHttpServer())
+          .patch(`/api/vendors/${vendor.id}/activation`)
+          .set('Authorization', `Bearer ${adminUser.accessToken}`)
+          .expect(200);
+        expect(activateResponse.body.verificationStatus).toBe('VERIFIED');
+        expect(activateResponse.body.status).toBe('ACTIVE');
+
+        const { vendor: secondVendor } = await createVendorRecord();
+        const verifyResponse = await request(app.getHttpServer())
+          .patch(`/api/vendors/${secondVendor.id}/verification`)
+          .set('Authorization', `Bearer ${adminUser.accessToken}`)
+          .send({ verificationStatus: 'UNDER_REVIEW' })
+          .expect(200);
+        expect(verifyResponse.body.status).toBe('PENDING');
+
+        await prisma.vendor.deleteMany({
+          where: { id: { in: [vendor.id, secondVendor.id] } },
+        });
+      });
+    });
+  });
+
+  // -----------------------------------------------------------------
   // Shop creation / retrieval / update
   // -----------------------------------------------------------------
   describe('Shops', () => {
