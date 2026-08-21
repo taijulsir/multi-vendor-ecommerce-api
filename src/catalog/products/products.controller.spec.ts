@@ -10,6 +10,7 @@ describe('ProductsController', () => {
     createForUser: jest.fn(),
     findById: jest.fn(),
     findPublicBySlug: jest.fn(),
+    findPublicList: jest.fn(),
     update: jest.fn(),
   };
 
@@ -45,6 +46,19 @@ describe('ProductsController', () => {
       await controller.create(user, dto);
 
       expect(productsService.createForUser).toHaveBeenCalledWith(user.id, dto);
+    });
+  });
+
+  describe('findPublicList', () => {
+    it('delegates to ProductsService.findPublicList with the query params, no auth required', async () => {
+      const page = {
+        data: [{ id: 'product-uuid' }],
+        meta: { page: 1, limit: 20, total: 1, totalPages: 1 },
+      };
+      productsService.findPublicList.mockResolvedValue(page);
+
+      await expect(controller.findPublicList({})).resolves.toEqual(page);
+      expect(productsService.findPublicList).toHaveBeenCalledWith({});
     });
   });
 

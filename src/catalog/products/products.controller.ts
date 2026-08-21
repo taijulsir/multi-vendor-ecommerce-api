@@ -5,9 +5,11 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import {
+  ApiBadRequestResponse,
   ApiBearerAuth,
   ApiConflictResponse,
   ApiCreatedResponse,
@@ -25,6 +27,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { ProductOwnershipGuard } from '../../auth/guards/product-ownership.guard';
 import type { SafeUser } from '../../auth/utils/safe-user';
 import { CreateProductDto } from './dto/create-product.dto';
+import { ListProductsQueryDto } from './dto/list-products-query.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductsService } from './products.service';
 
@@ -61,6 +64,28 @@ export class ProductsController {
   @ApiConflictResponse({ description: 'The requested slug is already in use.' })
   create(@CurrentUser() user: SafeUser, @Body() dto: CreateProductDto) {
     return this.productsService.createForUser(user.id, dto);
+  }
+
+  @Get()
+  @ApiOperation({
+    summary: 'Public storefront product list',
+    description:
+      'Unauthenticated. Returns only `ACTIVE`, non-deleted products, ' +
+      'paginated per docs/architecture.md §16. No category/vendor/search ' +
+      'filter exists — none is documented for this resource.',
+  })
+  @ApiOkResponse({
+    description: 'A page of public products.',
+    schema: {
+      example: {
+        data: [],
+        meta: { page: 1, limit: 20, total: 0, totalPages: 0 },
+      },
+    },
+  })
+  @ApiBadRequestResponse({ description: 'Invalid page/limit query parameter.' })
+  findPublicList(@Query() query: ListProductsQueryDto) {
+    return this.productsService.findPublicList(query);
   }
 
   @Get('slug/:slug')

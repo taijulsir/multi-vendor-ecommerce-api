@@ -37,3 +37,20 @@ export function toPublicProduct(product: Product): PublicProduct {
     productType: product.productType,
   };
 }
+
+/**
+ * The pagination envelope docs/architecture.md §16 specifies for
+ * collection endpoints (Phase 20 is the first endpoint to implement it —
+ * kept as a small, local type rather than a shared/generic pagination
+ * abstraction, per this phase's scope: "smallest API that satisfies the
+ * documented requirement").
+ */
+export interface PaginatedPublicProducts {
+  data: PublicProduct[];
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}

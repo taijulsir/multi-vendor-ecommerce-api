@@ -10,8 +10,13 @@ import { OwnershipService } from '../../auth/authorization/ownership.service';
 import { Prisma, type Product } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateProductDto } from './dto/create-product.dto';
+import { ListProductsQueryDto } from './dto/list-products-query.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
-import { toPublicProduct, type PublicProduct } from './utils/public-product';
+import {
+  toPublicProduct,
+  type PaginatedPublicProducts,
+  type PublicProduct,
+} from './utils/public-product';
 
 const PRISMA_UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
 const PRISMA_FOREIGN_KEY_VIOLATION = 'P2003';
@@ -108,6 +113,39 @@ export class ProductsService {
     }
 
     return toPublicProduct(product);
+  }
+
+  /**
+   * Public storefront product list (Phase 20) — same visibility rule as
+   * `findPublicBySlug`: only `ACTIVE`, non-deleted products. No
+   * category/vendor/search filter exists here because none is documented
+   * anywhere in docs/database/catalog.md (see this phase's final report)
+   * — pagination (docs/architecture.md §16's envelope) is the only
+   * capability this phase adds. Ordered newest-first, matching the
+   * default ordering convention already used by every other list method
+   * in this codebase (e.g. `VendorOrdersService.findMyVendorOrders`).
+   */
+  async findPublicList(
+    query: ListProductsQueryDto,
+  ): Promise<PaginatedPublicProducts> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const where = { status: 'ACTIVE' as const, deletedAt: null };
+
+    const [products, total] = await Promise.all([
+      this.prisma.product.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.product.count({ where }),
+    ]);
+
+    return {
+      data: products.map(toPublicProduct),
+      meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    };
   }
 
   /**

@@ -1787,10 +1787,10 @@ Vendor isolation                  APPROVED
 
 Prisma models                     IMPLEMENTED
 Database migration                 CREATED
-API implementation                 PARTIALLY IMPLEMENTED (Phase 11)
+API implementation                 PARTIALLY IMPLEMENTED (Phases 11, 20)
 Redis integration                  NOT IMPLEMENTED
 BullMQ integration                 NOT IMPLEMENTED
-Tests                              IMPLEMENTED (Phase 11, for what exists)
+Tests                              IMPLEMENTED (Phases 11, 20, for what exists)
 ```
 
 > Phase 11 implemented Category management (`GET /api/categories`,
@@ -1805,6 +1805,19 @@ Tests                              IMPLEMENTED (Phase 11, for what exists)
 > remain entirely unimplemented at the application layer; only their
 > Prisma models exist. Redis/BullMQ integration for inventory
 > reservation/expiry is not implemented.
+
+> Phase 20 added `GET /api/products` — a public, paginated
+> (`docs/architecture.md` §16 envelope) storefront product list, using
+> the exact same `status: ACTIVE, deletedAt: null` visibility rule and
+> `PublicProduct` response shape `findPublicBySlug` already established.
+> No category/vendor/search filter was added — none is documented
+> anywhere in this file for Product listing, so none was invented.
+> `GET /api/categories` (already implemented, Phase 11) was deliberately
+> **not** retrofitted with the same pagination envelope: it already
+> returns a flat array today, that shape is asserted directly by existing
+> Phase 11 tests, and changing it would be a breaking change to already-
+> shipped behavior — out of this narrowly-scoped phase. See this phase's
+> final report for the full reasoning.
 
 This document represents the approved Catalog architecture for the
 initial production-grade multi-vendor e-commerce implementation.

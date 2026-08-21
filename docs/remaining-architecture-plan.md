@@ -13,19 +13,24 @@ Based on          docs/project-completion-audit.md (primary current-state
                    docker-compose.yml, .github/workflows/, eslint.config.mjs,
                    package.json, .env.example
 Status of P0/P1   Phase 17 (P0.1, Vendor Verification/Activation),
-                   Phase 18 (P0.3, Concurrent Checkout E2E Proof), and
-                   Phase 19 (P0.2, Order Status Lifecycle) all IMPLEMENTED
-                   as of 2026-08-22 — see Section 6's Phase 17/18/19
-                   entries, `docs/database/vendor-shop.md` §22,
-                   `docs/database/order.md` §58, and Section 16's
-                   testing-strategy note. Phase 18 added test coverage
-                   only (zero application code changed); Phase 19
+                   Phase 18 (P0.3, Concurrent Checkout E2E Proof),
+                   Phase 19 (P0.2, Order Status Lifecycle), and Phase 20
+                   (P1.4, Product/Category List Endpoints) all IMPLEMENTED
+                   as of 2026-08-22 — see Section 6's Phase 17-20 entries,
+                   `docs/database/vendor-shop.md` §22, `docs/database/
+                   order.md` §58, `docs/database/catalog.md` §60, and
+                   Section 16's testing-strategy note. Phase 18 added test
+                   coverage only (zero application code changed); Phase 19
                    implemented the vendor-initiated subset of the order
                    lifecycle only — customer-initiated cancellation was
                    found unsupported by the source documents on direct
-                   re-reading and was not built (see Section 22).
-                   Phases 20-26 NOT started; this document remains the
-                   plan for all remaining work.
+                   re-reading and was not built (see Section 22). Phase 20
+                   implemented only `GET /products` (paginated, no
+                   filters) — the existing `GET /categories` was
+                   deliberately not retrofitted with the same pagination
+                   envelope, to avoid a breaking change to already-shipped
+                   Phase 11 behavior. Phases 21-26 NOT started; this
+                   document remains the plan for all remaining work.
 Baseline           2026-08-22 — Architecture Decision Register added below;
                     four decisions locked by explicit project-owner approval
                     (see register). ADR-1 through ADR-4 remain APPROVED and
@@ -203,8 +208,8 @@ model), and no `WalletTransaction` is ever created.
 | Identity & Access | ✅ | ✅ | ✅ | ✅ | ✅ | IMPLEMENTED | safe |
 | Vendor | ✅ | ✅ | ✅ create/view + verification/activation (Phase 17) | ✅ | ✅ | IMPLEMENTED (narrow transition matrix — see `docs/database/vendor-shop.md` §22) | safe |
 | Shop | ✅ | ✅ | ✅ | ✅ | ✅ | IMPLEMENTED | safe |
-| Category | ✅ | ✅ | ⚠️ no list-pagination convention used | ✅ | ✅ | IMPLEMENTED | safe |
-| Product | ✅ | ✅ | ⚠️ no list endpoint | ✅ | ✅ | IMPLEMENTED (core fields) | safe, narrowly (see §17) |
+| Category | ✅ | ✅ | ✅ (list/detail exist; list intentionally not retrofitted with pagination — see `docs/database/catalog.md` §60) | ✅ | ✅ | IMPLEMENTED | safe |
+| Product | ✅ | ✅ | ✅ list (Phase 20) + create/view/update (Phase 11) | ✅ | ✅ | IMPLEMENTED (core fields; no variants) | safe, narrowly (see §17) |
 | Product Variant | ✅ | ❌ | ❌ | ❌ | ⚠️ silently written by checkout's FK only | SCHEMA ONLY | do not claim |
 | Product Image | ✅ | ❌ | ❌ | ❌ | ❌ | SCHEMA ONLY | do not claim |
 | Inventory | ✅ | ⚠️ written inside checkout tx | ❌ | ⚠️ covered only via checkout e2e | ⚠️ | SCHEMA ONLY (no standalone layer) | do not claim |
@@ -395,6 +400,18 @@ unless a genuine defect is found.
   `status: ACTIVE, deletedAt: null` only (matching the existing
   slug-lookup pattern); no vendor-internal (DRAFT/ARCHIVED) products
   should leak into an unauthenticated list.
+
+> **STATUS: IMPLEMENTED (2026-08-22), narrowed scope.** `GET /api/products`
+> was added exactly as planned (pagination envelope, `ACTIVE`+non-deleted
+> only, reusing the existing `PublicProduct` shape). `GET /api/categories`
+> was **not** changed — it already exists (Phase 11) and already returns a
+> flat array; `docs/database/catalog.md` has no requirement beyond "list
+> exists," and retrofitting the pagination envelope onto it would break
+> the existing, already-shipped, already-tested response shape (asserted
+> directly by `test/catalog.e2e-spec.ts`'s `Array.isArray(response.body)`
+> check) — a regression this task's own rules forbid. No category/vendor/
+> search filter was added to the product list either — none is
+> documented anywhere in `docs/database/catalog.md` for Product listing.
 
 ### P1.5 — Product Variant + Inventory Management API
 
@@ -658,6 +675,22 @@ dependency analysis.
   `05`/`06`.
 - **Completion criteria:** both endpoints live, tested, documented.
 - **Risk/ambiguity:** low.
+
+> **STATUS: IMPLEMENTED (2026-08-22) — 1 of the 2 planned endpoints, by
+> deliberate scope decision.** `GET /api/products` implemented exactly as
+> planned: `src/catalog/products/products.controller.ts`/
+> `products.service.ts`, new `ListProductsQueryDto`
+> (`page`/`limit` only), new `PaginatedPublicProducts` type in
+> `utils/public-product.ts`. `GET /api/categories` was **not** touched —
+> see the P1.4 update note above for why (avoiding a breaking change to
+> already-shipped Phase 11 behavior). `docs/API.md`, README, and Postman
+> were **not** updated in this phase — deferred to Phase 25, consistent
+> with how Phases 17-19 handled the same items. 8 new unit tests
+> (service + controller) + 8 new e2e tests added, all passing; full suite
+> (373 unit / 262 e2e) green; `npx prisma validate`/`migrate status`
+> clean with zero schema changes. No production bug found; zero changes
+> to `CartService`, `CheckoutService`, `OrdersService`,
+> `VendorOrdersService`, `CategoriesService`, or any guard.
 
 ## Phase 21 — Product Variant + Inventory Management
 
@@ -1176,12 +1209,15 @@ no textual basis for a customer mutation capability (§48 grants customers
 only viewing rights; "Update fulfillment-related state" is listed only
 for vendors). See Section 22 and this phase's final report.
 
-**Phase 20 — List Endpoints**
+**Phase 20 — List Endpoints — IMPLEMENTED (2026-08-22), narrowed**
 
 | Method | Path | Auth | Authz | DTO | Response | Ownership | Swagger | E2E |
 |---|---|---|---|---|---|---|---|---|
-| GET | /products | public | — | query params (page, limit) | `{data, meta}` | n/a — ACTIVE-only filter | required | required |
-| GET | /categories | public | — | query params | `{data, meta}` | n/a | required | required |
+| GET | /products | public | — | `ListProductsQueryDto {page?, limit?}` | `{data, meta}` | n/a — ACTIVE-only filter | ✅ done | ✅ done |
+| ~~GET /categories (pagination envelope)~~ | — | — | — | — | — | — | **NOT CHANGED** | — |
+
+`GET /categories` already existed (Phase 11, flat array response) and was
+deliberately left unchanged — see the P1.4/Phase 20 update notes above.
 
 **Phase 21 — Variant + Inventory**
 
@@ -1409,7 +1445,8 @@ match, not introduce a new testing pattern):
 (Restated from `docs/project-completion-audit.md` Part 15, updated
 2026-08-22 — Vendor verification/activation added following Phase 17;
 concurrency proof added following Phase 18; vendor-initiated order
-fulfillment lifecycle added following Phase 19.)
+fulfillment lifecycle added following Phase 19; paginated public product
+list added following Phase 20.)
 
 - JWT authentication with refresh-token rotation and reuse detection.
 - RBAC with live database re-evaluation.
@@ -1431,8 +1468,11 @@ fulfillment lifecycle added following Phase 19.)
   `MasterOrder.status` and a full immutable status-history trail. **Claim
   precisely this narrow scope** — not "full order management" (see DO NOT
   CLAIM YET).
+- A paginated, public product catalog browse endpoint (Phase 20) —
+  `GET /api/products` returns `ACTIVE`, non-deleted products only, in the
+  documented `{data, meta}` envelope.
 - Two-layer webhook idempotency.
-- 368 unit + 255 e2e tests, including adversarial and concurrency
+- 373 unit + 262 e2e tests, including adversarial and concurrency
   scenarios.
 - Verified Docker build + CI pipeline against real Postgres/Redis.
 
@@ -1544,8 +1584,8 @@ phase sequence.
 ## Architecture
 - [x] Current architecture reconstructed and verified (Section 2)
 - [x] Remaining architecture planned (this document)
-- [ ] Phase 17-26 execution (Phases 17-19 complete as of 2026-08-22; Phases
-      20-26 not started)
+- [ ] Phase 17-26 execution (Phases 17-20 complete as of 2026-08-22; Phases
+      21-26 not started)
 
 ## Backend
 - [x] Vendor verification/activation (Phase 17) — completed 2026-08-22
@@ -1553,7 +1593,9 @@ phase sequence.
       completed 2026-08-22
 
 ## Catalog
-- [ ] Product/Category list endpoints (Phase 20)
+- [x] Product list endpoint (Phase 20) — completed 2026-08-22
+- [x] Category list pagination — resolved as NOT applicable (Phase 20);
+      existing flat-array endpoint intentionally kept unchanged
 - [ ] ProductVariant CRUD (Phase 21)
 - [ ] Product Image upload/streaming (Phase 22)
 
@@ -1595,7 +1637,8 @@ phase sequence.
 - [x] Concurrent checkout test (Phase 18) — completed 2026-08-22
 - [x] Order lifecycle tests (Phase 19) — completed 2026-08-22 (43 unit +
       15 e2e, including a concurrency sub-test)
-- [ ] List endpoint tests (Phase 20)
+- [x] List endpoint tests (Phase 20) — completed 2026-08-22 (8 unit + 8
+      e2e)
 - [ ] Variant/Inventory tests incl. concurrency (Phase 21)
 - [ ] Upload security tests (Phase 22)
 
@@ -1614,7 +1657,9 @@ phase sequence.
       completed 2026-08-22
 - [x] `docs/database/order.md` §58 update (post-Phase 19) — completed
       2026-08-22
-- [ ] `docs/database/catalog.md` §60 update (post-Phase 21/22)
+- [x] `docs/database/catalog.md` §60 update (post-Phase 20) — completed
+      2026-08-22; a further update remains due post-Phase 21/22 for
+      Variant/Image/Inventory
 - [ ] `docs/API.md` refresh (Phase 25)
 - [ ] README refresh (Phase 25)
 - [ ] `.env.example` update for `FILE_STORAGE_DIR` (Phase 22)

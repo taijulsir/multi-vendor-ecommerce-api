@@ -675,6 +675,15 @@ Example:
 
 The exact pagination implementation may evolve, but the response contract should remain consistent across modules.
 
+**Implemented (Phase 20):** `GET /api/products` is the first endpoint to
+use this exact envelope (`src/catalog/products/products.service.ts`).
+Other existing collection endpoints (`GET /api/categories`, `GET
+/api/orders`, `GET /api/vendor-orders`) predate this convention and still
+return a plain array — they were deliberately **not** retrofitted in
+Phase 20 to avoid a breaking response-shape change to already-shipped,
+tested behavior; adopting the envelope for them is a candidate for a
+future, explicitly-scoped phase, not an oversight.
+
 ---
 
 # 17. Error Handling

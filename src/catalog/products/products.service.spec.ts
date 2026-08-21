@@ -15,6 +15,8 @@ describe('ProductsService', () => {
     product: {
       create: jest.fn(),
       findFirst: jest.fn(),
+      findMany: jest.fn(),
+      count: jest.fn(),
       update: jest.fn(),
     },
     category: {
@@ -203,6 +205,98 @@ describe('ProductsService', () => {
       expect(prisma.product.findFirst).toHaveBeenCalledWith({
         where: { slug: 'draft-product', status: 'ACTIVE', deletedAt: null },
       });
+    });
+  });
+
+  describe('findPublicList', () => {
+    const makeProduct = (overrides: Partial<Record<string, unknown>> = {}) => ({
+      id: 'product-uuid',
+      vendorId: 'vendor-uuid',
+      categoryId: 'category-uuid',
+      name: 'Apple iPhone 17 Pro Max',
+      slug: 'apple-iphone-17-pro-max',
+      description: null,
+      status: 'ACTIVE',
+      productType: 'SIMPLE',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+      ...overrides,
+    });
+
+    it('returns a page of public-safe products with default pagination', async () => {
+      prisma.product.findMany.mockResolvedValue([makeProduct()]);
+      prisma.product.count.mockResolvedValue(1);
+
+      const result = await service.findPublicList({});
+
+      expect(prisma.product.findMany).toHaveBeenCalledWith({
+        where: { status: 'ACTIVE', deletedAt: null },
+        orderBy: { createdAt: 'desc' },
+        skip: 0,
+        take: 20,
+      });
+      expect(prisma.product.count).toHaveBeenCalledWith({
+        where: { status: 'ACTIVE', deletedAt: null },
+      });
+      expect(result).toEqual({
+        data: [
+          {
+            id: 'product-uuid',
+            categoryId: 'category-uuid',
+            name: 'Apple iPhone 17 Pro Max',
+            slug: 'apple-iphone-17-pro-max',
+            description: null,
+            status: 'ACTIVE',
+            productType: 'SIMPLE',
+          },
+        ],
+        meta: { page: 1, limit: 20, total: 1, totalPages: 1 },
+      });
+      expect(result.data[0]).not.toHaveProperty('vendorId');
+    });
+
+    it('applies the requested page/limit as skip/take', async () => {
+      prisma.product.findMany.mockResolvedValue([]);
+      prisma.product.count.mockResolvedValue(45);
+
+      const result = await service.findPublicList({ page: 3, limit: 10 });
+
+      expect(prisma.product.findMany).toHaveBeenCalledWith({
+        where: { status: 'ACTIVE', deletedAt: null },
+        orderBy: { createdAt: 'desc' },
+        skip: 20,
+        take: 10,
+      });
+      expect(result.meta).toEqual({
+        page: 3,
+        limit: 10,
+        total: 45,
+        totalPages: 5,
+      });
+    });
+
+    it('returns an empty page with totalPages 0 when there are no ACTIVE products', async () => {
+      prisma.product.findMany.mockResolvedValue([]);
+      prisma.product.count.mockResolvedValue(0);
+
+      const result = await service.findPublicList({});
+
+      expect(result).toEqual({
+        data: [],
+        meta: { page: 1, limit: 20, total: 0, totalPages: 0 },
+      });
+    });
+
+    it('propagates unrelated database errors', async () => {
+      prisma.product.findMany.mockRejectedValue(
+        new Error('connection terminated unexpectedly'),
+      );
+      prisma.product.count.mockResolvedValue(0);
+
+      await expect(service.findPublicList({})).rejects.toThrow(
+        'connection terminated unexpectedly',
+      );
     });
   });
 

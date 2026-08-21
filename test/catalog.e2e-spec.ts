@@ -471,6 +471,122 @@ describe('Catalog API (e2e)', () => {
       });
     });
 
+    describe('GET /api/products (public list, Phase 20)', () => {
+      it('lists ACTIVE products with no authentication required, in the documented pagination envelope', async () => {
+        const response = await request(app.getHttpServer())
+          .get('/api/products')
+          .expect(200);
+
+        expect(response.body).toHaveProperty('data');
+        expect(response.body).toHaveProperty('meta');
+        expect(response.body.meta).toEqual(
+          expect.objectContaining({ page: 1, limit: 20 }),
+        );
+        expect(Array.isArray(response.body.data)).toBe(true);
+
+        const found = response.body.data.find(
+          (p: { id: string }) => p.id === productAId,
+        );
+        expect(found).toBeDefined();
+        expect(found).not.toHaveProperty('vendorId');
+        expect(found).not.toHaveProperty('createdAt');
+        expect(found).not.toHaveProperty('deletedAt');
+      });
+
+      it('excludes DRAFT products from the public list', async () => {
+        const response = await request(app.getHttpServer())
+          .get('/api/products')
+          .expect(200);
+
+        expect(
+          response.body.data.some((p: { id: string }) => p.id === productBId),
+        ).toBe(false);
+      });
+
+      it('excludes soft-deleted products from the public list', async () => {
+        const softDeleted = await prisma.product.create({
+          data: {
+            vendorId: vendorAVendorId,
+            categoryId,
+            name: 'Soft Deleted Product',
+            slug: uniqueSlug('soft-deleted-product'),
+            status: 'ACTIVE',
+            deletedAt: new Date(),
+          },
+        });
+
+        const response = await request(app.getHttpServer())
+          .get('/api/products')
+          .expect(200);
+
+        expect(
+          response.body.data.some(
+            (p: { id: string }) => p.id === softDeleted.id,
+          ),
+        ).toBe(false);
+
+        await prisma.product.delete({ where: { id: softDeleted.id } });
+      });
+
+      it('respects page/limit query parameters', async () => {
+        const category = await prisma.category.create({
+          data: { name: 'Pagination Category', slug: uniqueSlug('pag-cat') },
+        });
+        const vendorUser = await registerAndLogin('PaginationVendor');
+        const vendorRecord = await prisma.vendor.create({
+          data: { userId: vendorUser.id, businessName: 'Pagination Vendor' },
+        });
+        const products = await Promise.all(
+          Array.from({ length: 3 }).map((_, i) =>
+            prisma.product.create({
+              data: {
+                vendorId: vendorRecord.id,
+                categoryId: category.id,
+                name: `Pagination Product ${i}`,
+                slug: uniqueSlug(`pagination-product-${i}`),
+                status: 'ACTIVE',
+              },
+            }),
+          ),
+        );
+
+        const firstPage = await request(app.getHttpServer())
+          .get('/api/products')
+          .query({ page: 1, limit: 1 })
+          .expect(200);
+        expect(firstPage.body.data).toHaveLength(1);
+        expect(firstPage.body.meta.limit).toBe(1);
+        expect(firstPage.body.meta.total).toBeGreaterThanOrEqual(4); // productA + 3 fixtures
+
+        await prisma.product.deleteMany({
+          where: { id: { in: products.map((p) => p.id) } },
+        });
+        await prisma.vendor.delete({ where: { id: vendorRecord.id } });
+        await prisma.category.delete({ where: { id: category.id } });
+      });
+
+      it('rejects (400) an invalid page query parameter', async () => {
+        await request(app.getHttpServer())
+          .get('/api/products')
+          .query({ page: 0 })
+          .expect(400);
+      });
+
+      it('rejects (400) a limit exceeding the documented maximum', async () => {
+        await request(app.getHttpServer())
+          .get('/api/products')
+          .query({ limit: 1000 })
+          .expect(400);
+      });
+
+      it('rejects (400) a non-numeric page/limit value', async () => {
+        await request(app.getHttpServer())
+          .get('/api/products')
+          .query({ page: 'not-a-number' })
+          .expect(400);
+      });
+    });
+
     describe('GET /api/products/:productId (authenticated management access)', () => {
       it('allows the authenticated owner to fetch their own product', async () => {
         const response = await request(app.getHttpServer())
