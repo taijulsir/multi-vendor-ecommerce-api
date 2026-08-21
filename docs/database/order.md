@@ -1639,7 +1639,7 @@ Payment integration                   NOT IMPLEMENTED
 Refund integration                    NOT IMPLEMENTED
 Redis integration                     NOT IMPLEMENTED
 BullMQ integration                    NOT IMPLEMENTED
-Tests                                 IMPLEMENTED (Phases 13–14)
+Tests                                 IMPLEMENTED (Phases 13–14, 18)
 ```
 
 > Phase 13 implemented `POST /api/checkout` — Cart → MasterOrder +
@@ -1689,6 +1689,16 @@ Tests                                 IMPLEMENTED (Phases 13–14)
 > explicitly not finalized in this document), cancellation, and any
 > admin "view all orders" listing beyond the single-resource ADMIN
 > bypass.
+
+> Phase 18 added no application code — it added a dedicated e2e proof
+> (`test/checkout.e2e-spec.ts`, `Concurrency (Phase 18)`) that §34's
+> "Order Creation Transaction" and §35's "Idempotency" requirements
+> actually hold under genuinely concurrent requests, not just sequential
+> ones: two simultaneous `POST /api/checkout` calls against the same
+> active cart are verified, directly against the database, to always
+> produce exactly one `MasterOrder`/`VendorOrder`/`OrderItem` and exactly
+> one inventory reservation — never two. Confirms the existing Phase 13
+> design; nothing about it changed.
 
 The Order domain is the authoritative representation of completed
 purchases and must preserve sufficient historical information to remain

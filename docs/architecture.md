@@ -1165,6 +1165,17 @@ SELECT-then-check-then-UPDATE sequence — see
 `docs/database/catalog.md` §47's explicit warning against the latter.
 This requires no distributed lock and no Redis.
 
+**Concurrency proof (Phase 18):** the cart-conversion guard above is
+verified, not just designed — `test/checkout.e2e-spec.ts`'s
+`Concurrency (Phase 18)` suite fires two genuinely simultaneous
+`POST /api/checkout` requests (via `Promise.all`) against the same active
+cart with inventory tight enough that a double-reservation would be
+unmissable, and asserts the resulting database state directly (exactly
+one `MasterOrder`/`VendorOrder`/`OrderItem`, `Inventory.reserved`
+incremented exactly once, exactly one `RESERVATION`-type
+`InventoryTransaction`). No production code changed as a result — the
+Phase 13 design already held.
+
 ## Payment Transaction Boundary (implemented, Phase 15)
 
 `PaymentsService`/`WebhooksService` (`src/payments/`) each wrap exactly

@@ -550,4 +550,125 @@ describe('Checkout API (e2e)', () => {
       expect(cartB.body.items).toHaveLength(1);
     });
   });
+
+  // -----------------------------------------------------------------
+  // Concurrency proof (Phase 18)
+  //
+  // The sequential "duplicate/retried checkout" test above only proves
+  // the *pre-transaction* `cart.findFirst` guard (a cart that is already
+  // CONVERTED by the time a second request starts is rejected 400,
+  // "empty cart"). It does NOT exercise CheckoutService's actual
+  // concurrency mechanism: the atomic `cart.updateMany({ status: ACTIVE
+  // → CONVERTED })` guard *inside* the transaction (checkout.service.ts),
+  // which is what protects two requests that are both still in flight —
+  // both having already passed the pre-transaction check — from racing
+  // each other. Proving that requires two HTTP requests that are
+  // genuinely still-open at the same time, which `Promise.all` gives:
+  // both `supertest` requests are started in the same microtask (calling
+  // `.then()`/awaiting a supertest Test object is what triggers
+  // `.end()`), so both reach the Node event loop, and then Postgres,
+  // while still concurrent — the same technique already established in
+  // this codebase's own `test/auth.e2e-spec.ts` "concurrent refresh"
+  // test for an analogous single-winner DB-row-lock guarantee. No sleep,
+  // delay, or artificial synchronization is introduced anywhere — the
+  // race is real, and its outcome is decided entirely by PostgreSQL's
+  // own row-level locking on the `carts` row (whichever transaction's
+  // `UPDATE ... WHERE status = 'ACTIVE'` commits first "wins"; the
+  // second transaction's identical `UPDATE` then finds 0 matching rows
+  // under READ COMMITTED and the affected-row-count check fails).
+  describe('Concurrency (Phase 18)', () => {
+    // A small, deterministic repeat count (not a stress test) — see this
+    // phase's final report for why a single run is already conclusive
+    // (the guard is a DB row lock, not a probabilistic race) and why a
+    // few repeats are still run to demonstrate stability across
+    // independent event-loop schedulings.
+    const RACE_REPETITIONS = 3;
+
+    it('lets exactly one of two concurrent checkout requests against the same active cart succeed, with no duplicate order and no double inventory reservation', async () => {
+      for (let attempt = 0; attempt < RACE_REPETITIONS; attempt++) {
+        const user = await registerAndLogin(`ConcurrentCheckout${attempt}`);
+        // Inventory tight enough that a double-reservation would be
+        // impossible to miss: exactly one unit available for exactly one
+        // request to legitimately claim.
+        const { variant } = await createVendorProductVariant({
+          onHand: 1,
+          reserved: 0,
+        });
+
+        await request(app.getHttpServer())
+          .post('/api/cart/items')
+          .set('Authorization', `Bearer ${user.accessToken}`)
+          .send({ variantId: variant.id, quantity: 1 })
+          .expect(200);
+
+        // Identical payload, identical authenticated identity, identical
+        // (server-resolved) cart — the only way these two requests can
+        // differ in outcome is the database race itself. No `cartId`,
+        // `userId`, price, or quantity is ever sent by the client — the
+        // existing CheckoutDto (unchanged) has no such fields.
+        const checkoutPayload = { shippingAddress };
+
+        const [responseA, responseB] = await Promise.all([
+          request(app.getHttpServer())
+            .post('/api/checkout')
+            .set('Authorization', `Bearer ${user.accessToken}`)
+            .send(checkoutPayload),
+          request(app.getHttpServer())
+            .post('/api/checkout')
+            .set('Authorization', `Bearer ${user.accessToken}`)
+            .send(checkoutPayload),
+        ]);
+
+        // Exactly one success, one conflict — never two successes
+        // (double order) and never two failures (checkout should have
+        // been possible at all).
+        const statuses = [responseA.status, responseB.status].sort(
+          (a, b) => a - b,
+        );
+        expect(statuses).toEqual([201, 409]);
+
+        // The loser must fail with the documented cart-race conflict —
+        // not an unrelated/unexpected error — proving this is genuinely
+        // CheckoutService's atomic cart-conversion guard and not some
+        // other failure mode.
+        const loser = responseA.status === 409 ? responseA : responseB;
+        expect(loser.body.message).toBe('Your cart is empty or does not exist');
+
+        // --- The database state is the real proof, not the HTTP status. ---
+
+        const masterOrderCount = await prisma.masterOrder.count({
+          where: { userId: user.id },
+        });
+        expect(masterOrderCount).toBe(1);
+
+        const masterOrder = await prisma.masterOrder.findFirstOrThrow({
+          where: { userId: user.id },
+          include: { vendorOrders: { include: { items: true } } },
+        });
+        expect(masterOrder.vendorOrders).toHaveLength(1);
+        expect(masterOrder.vendorOrders[0].items).toHaveLength(1);
+        expect(masterOrder.vendorOrders[0].items[0].variantId).toBe(variant.id);
+        expect(masterOrder.vendorOrders[0].items[0].quantity).toBe(1);
+
+        const inventory = await prisma.inventory.findUniqueOrThrow({
+          where: { variantId: variant.id },
+        });
+        expect(inventory.onHand).toBe(1);
+        // The critical assertion: reserved must be exactly 1, never 2.
+        expect(inventory.reserved).toBe(1);
+
+        const reservationTransactions = await prisma.inventoryTransaction.count(
+          {
+            where: { inventoryId: inventory.id, type: 'RESERVATION' },
+          },
+        );
+        expect(reservationTransactions).toBe(1);
+
+        const cart = await prisma.cart.findFirstOrThrow({
+          where: { userId: user.id },
+        });
+        expect(cart.status).toBe('CONVERTED');
+      }
+    });
+  });
 });

@@ -12,11 +12,14 @@ Based on          docs/project-completion-audit.md (primary current-state
                    src/**, test/**, postman/**, Dockerfile,
                    docker-compose.yml, .github/workflows/, eslint.config.mjs,
                    package.json, .env.example
-Status of P0/P1   Phase 17 (P0.1, Vendor Verification/Activation)
+Status of P0/P1   Phase 17 (P0.1, Vendor Verification/Activation) and
+                   Phase 18 (P0.3, Concurrent Checkout E2E Proof) both
                    IMPLEMENTED as of 2026-08-22 — see Section 6's Phase 17
-                   entry and `docs/database/vendor-shop.md` §22.
-                   Phases 18-26 NOT started; this document remains the plan
-                   for all remaining work.
+                   and Phase 18 entries, `docs/database/vendor-shop.md`
+                   §22, and Section 16's testing-strategy note. Phase 18
+                   added test coverage only — zero application code
+                   changed. Phases 19-26 NOT started; this document
+                   remains the plan for all remaining work.
 Baseline           2026-08-22 — Architecture Decision Register added below;
                     four decisions locked by explicit project-owner approval
                     (see register). ADR-1 through ADR-4 remain APPROVED and
@@ -530,6 +533,32 @@ dependency analysis.
 - **Completion criteria:** the new test passes reliably (not flaky) across
   multiple runs.
 - **Risk/ambiguity:** none — lowest-risk phase in this plan.
+
+> **STATUS: IMPLEMENTED (2026-08-22).** Added to
+> `test/checkout.e2e-spec.ts` as a new `Concurrency (Phase 18)` describe
+> block — no other file changed, confirming the "no application code
+> changes" prediction above exactly. Two genuinely concurrent
+> `POST /api/checkout` requests (fired via `Promise.all`, the same
+> technique already established in this codebase's own
+> `test/auth.e2e-spec.ts` "concurrent refresh" test) against the same
+> active cart, with inventory deliberately tight (`onHand: 1`) so a
+> double-reservation would be structurally unmissable. Repeated 3 times
+> inside the one test (a deterministic, not probabilistic, repeat count —
+> the guard is a Postgres row lock, not a timing race — see the test's
+> own comment) and the whole e2e suite re-run 5+ times independently, all
+> green: **1 success (201) + 1 conflict (409, "Your cart is empty or
+> does not exist") every time**, database state directly verified each
+> time (1 `MasterOrder`, 1 `VendorOrder`, 1 `OrderItem`,
+> `Inventory.reserved === 1` never `2`, exactly 1 `RESERVATION`-type
+> `InventoryTransaction`, `Cart.status === 'CONVERTED'`). **No production
+> bug was found; zero application code was changed.** This confirms
+> — rather than merely asserts — the atomic `Cart.status: ACTIVE →
+> CONVERTED` guard inside `CheckoutService`'s transaction
+> (`checkout.service.ts`) is what protects genuinely concurrent requests,
+> distinct from the pre-existing sequential "duplicate/retried checkout"
+> test (which only exercises the cheaper pre-transaction `cart.findFirst`
+> check and gets 400, not 409 — the two tests together now cover both
+> code paths).
 
 ## Phase 19 — Order Status Lifecycle
 
@@ -1284,9 +1313,11 @@ production deployment.
 
 **Highest-value missing tests, ranked:**
 
-1. **Concurrent checkout e2e** (Phase 18) — proves the single most
-   important correctness property (no overselling) under real concurrent
-   load, currently only proven by code inspection.
+1. ~~**Concurrent checkout e2e** (Phase 18)~~ — **DONE (2026-08-22).**
+   Proves the single most important correctness property (no overselling)
+   under real concurrent load — previously only proven by code
+   inspection, now proven by a genuinely concurrent, real-Postgres e2e
+   test in `test/checkout.e2e-spec.ts`.
 2. **Order status transition matrix tests** (Phase 19) — every valid
    transition, every explicitly-invalid transition, cross-vendor
    isolation on vendor-order status updates.
@@ -1329,7 +1360,8 @@ match, not introduce a new testing pattern):
 ## SAFE TO CLAIM NOW
 
 (Restated from `docs/project-completion-audit.md` Part 15, updated
-2026-08-22 — Vendor verification/activation added following Phase 17.)
+2026-08-22 — Vendor verification/activation added following Phase 17;
+concurrency proof added following Phase 18.)
 
 - JWT authentication with refresh-token rotation and reuse detection.
 - RBAC with live database re-evaluation.
@@ -1339,9 +1371,14 @@ match, not introduce a new testing pattern):
   (Phase 17) — a vendor can be taken from application to fully `ACTIVE`
   entirely through the documented API, not just manual DB seeding.
 - Atomic, transactional multi-vendor checkout with race-safe inventory
-  reservation.
+  reservation — **and now proven, not just designed, under real
+  concurrent load** (Phase 18): two genuinely simultaneous checkout
+  requests against the same cart/inventory are verified, directly against
+  PostgreSQL, to always produce exactly one order and exactly one
+  reservation, never two.
 - Two-layer webhook idempotency.
-- 325 unit + 240 e2e tests, including adversarial scenarios.
+- 325 unit + 241 e2e tests, including adversarial and concurrency
+  scenarios.
 - Verified Docker build + CI pipeline against real Postgres/Redis.
 
 ## DO NOT CLAIM YET
@@ -1450,8 +1487,8 @@ phase sequence.
 ## Architecture
 - [x] Current architecture reconstructed and verified (Section 2)
 - [x] Remaining architecture planned (this document)
-- [ ] Phase 17-26 execution (Phase 17 complete as of 2026-08-22; Phases
-      18-26 not started)
+- [ ] Phase 17-26 execution (Phases 17-18 complete as of 2026-08-22; Phases
+      19-26 not started)
 
 ## Backend
 - [x] Vendor verification/activation (Phase 17) — completed 2026-08-22
@@ -1492,7 +1529,7 @@ phase sequence.
 ## Testing
 - [x] Vendor verification/activation tests, unit + e2e (Phase 17) —
       completed 2026-08-22
-- [ ] Concurrent checkout test (Phase 18)
+- [x] Concurrent checkout test (Phase 18) — completed 2026-08-22
 - [ ] Order lifecycle tests (Phase 19)
 - [ ] List endpoint tests (Phase 20)
 - [ ] Variant/Inventory tests incl. concurrency (Phase 21)
