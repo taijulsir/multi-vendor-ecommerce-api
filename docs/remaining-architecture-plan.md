@@ -219,7 +219,7 @@ model), and no `WalletTransaction` is ever created.
 | Category | ✅ | ✅ | ✅ (list/detail exist; list intentionally not retrofitted with pagination — see `docs/database/catalog.md` §60) | ✅ | ✅ | IMPLEMENTED | safe |
 | Product | ✅ | ✅ | ✅ list (Phase 20) + create/view/update (Phase 11) | ✅ | ✅ | IMPLEMENTED (core fields; variants now purchasable, see below) | safe, narrowly (see §17) |
 | Product Variant | ✅ | ✅ CRUD (Phase 21) | ✅ vendor-owned, no public route | ✅ | ✅ | IMPLEMENTED (narrow — no default-reassignment; see `docs/database/catalog.md` §60) | safe, narrowly (see §17) |
-| Product Image | ✅ | ❌ | ❌ | ❌ | ❌ | SCHEMA ONLY | do not claim |
+| Product Image | ✅ | ✅ upload/stream/delete (Phase 22) | ✅ vendor-owned upload/delete, mixed-auth stream | ✅ | ✅ | IMPLEMENTED (narrow — no reordering/primary-image enforcement; see `docs/database/catalog.md` §60) | safe, narrowly (see §17) |
 | Inventory | ✅ | ✅ view/restock/adjust (Phase 21) | ✅ vendor-owned | ✅ | ✅ | IMPLEMENTED (narrow — no `SALE` transaction type yet, see Section 22) | safe, narrowly (see §17) |
 | Cart | ✅ | ✅ | ✅ | ✅ | ✅ | IMPLEMENTED | safe |
 | Checkout | ✅ | ✅ | ✅ | ✅ | ✅ | IMPLEMENTED | safe |
@@ -807,6 +807,54 @@ dependency analysis.
   item is the exact `FILE_STORAGE_DIR` production value, which is a
   deployment-environment detail, not a business rule.
 
+> **STATUS: IMPLEMENTED (2026-08-22).** `POST /api/products/:productId
+> /images` (multipart, owner-scoped, `ProductOwnershipGuard` reused
+> completely unchanged), `GET /api/products/:productId/images/:imageId`
+> (streamed, mixed auth — visibility inherited from the parent
+> `Product.status`), `DELETE /api/products/:productId/images/:imageId`
+> (owner-scoped, hard DB delete + best-effort on-disk cleanup) — exactly
+> the three routes in Section 11's table, no more. **No list endpoint
+> exists** (not in the approved table; a vendor learns an image's id from
+> its own upload response) and **existing `Product`/`ProductVariant`
+> responses are completely unchanged** — Section 11's table doesn't call
+> for either, so neither was added.
+>
+> Files affected: new `src/storage/` module (`LocalFileStorageService`,
+> `StorageModule`) as its own infrastructure module (grouped with
+> `PrismaModule`/`RedisModule` in spirit, not a `CatalogModule` concern);
+> new `src/catalog/product-images/` folder (service, controller, DTO,
+> two small utils — MIME validation and the response mapper), registered
+> directly into the existing `catalog.module.ts`, matching Phase 21's
+> established one-module-per-domain convention. New
+> `src/auth/guards/optional-jwt-auth.guard.ts` — a thin `AuthGuard('jwt')`
+> override whose `handleRequest` never throws, needed because the
+> streaming route's "mixed" auth model doesn't fit
+> `ProductOwnershipGuard`'s unconditional-auth shape; `ProductImagesService`
+> composes `OwnershipService`/`AuthorizationService` directly for that one
+> route instead. New dependencies: `file-type` (promoted from a transitive
+> `@nestjs/common` dependency to an explicit one — magic-byte MIME
+> sniffing) and `@types/multer`. `npm test`/`npm run test:cov` now set
+> `NODE_OPTIONS=--experimental-vm-modules`, matching the existing e2e
+> script — required for `file-type`'s ESM-only dynamic `import()`, not a
+> new requirement invented by this phase.
+>
+> **The "e.g. 5 MB" file-size figure in Section 8 was treated as the
+> approved limit**, not re-litigated as an open question — it is the only
+> concrete number given anywhere in the approved design. Flagged
+> transparently here since the source text hedges with "e.g." rather than
+> stating a bare mandate. **`isPrimary` has no uniqueness enforcement**
+> and **`sortOrder` is never reassigned** (no reordering endpoint exists)
+> — both genuinely open, same "sidestepped, not resolved" treatment Phase
+> 21 already applied to `ProductVariant.isDefault`.
+>
+> 21 new unit tests (`LocalFileStorageService`) + 4 (`OptionalJwtAuthGuard`)
+> + 21 (`ProductImagesService`/`ProductImagesController`) + 24 new e2e
+> tests (real Postgres, a real temporary `FILE_STORAGE_DIR` created/torn
+> down per test run, real image fixtures — MIME sniffing was never
+> mocked) added, all passing; full suite (447 unit / e2e green, see this
+> phase's final report) green; `npx prisma validate`/`migrate status`
+> clean with zero schema changes.
+
 ## Phase 23 — Production Hardening
 
 - **Objective:** implement P1.7, P1.8, and evaluate P2's rate limiting.
@@ -992,6 +1040,18 @@ Inventory       ← IMPLEMENTED (Phase 21): view/restock/adjust API
   deferred until a future phase defines what "sale finalized" means. **Do
   not invent a `SALE` trigger point not yet supported by an actual
   payment-confirmed order state.**
+- **`ProductImage.isPrimary` uniqueness / `sortOrder` reassignment** —
+  `catalog.md` §26 states the invariant aspiration ("primary-image rules
+  are enforced") but Section 8/11 never specify an enforcement mechanism
+  or a reordering endpoint. **Phase 22 sidestepped this the same way
+  Phase 21 sidestepped default-variant reassignment**: `isPrimary` is
+  accepted and stored as given, with no DB constraint or application
+  check preventing more than one `true` value per product; `sortOrder`
+  always defaults to `0` and nothing ever changes it (no reordering
+  endpoint exists). **Still BLOCKED — BUSINESS/DESIGN DECISION REQUIRED**
+  specifically for: enforcing at most one primary image, and whether/how
+  images can be reordered. Not blocking for anything else — upload/
+  stream/delete are fully implemented.
 
 ---
 
@@ -1308,19 +1368,19 @@ is reused with **zero modification** — every route is nested under
 `/products/:productId/...`, so the guard's existing `:productId`-param
 resolution applies unchanged.
 
-**Phase 22 — Product Images**
+**Phase 22 — Product Images — IMPLEMENTED (2026-08-22)**
 
 | Method | Path | Auth | Authz | DTO | Response | Ownership | Swagger | E2E |
 |---|---|---|---|---|---|---|---|---|
-| POST | /products/:productId/images | JWT | owner | multipart file + `{variantId?, altText?, isPrimary?}` | ProductImage | via parent Product | required | required |
-| GET | /products/:productId/images/:imageId | mixed | inherited from product visibility | — | streamed file | inherited | required | required |
-| DELETE | /products/:productId/images/:imageId | JWT | owner | — | 204 | via parent Product | required | required |
+| POST | /products/:productId/images | JWT | owner | multipart file + `{variantId?, altText?, isPrimary?}` | ProductImage | `ProductOwnershipGuard` (reused) | ✅ done | ✅ done |
+| GET | /products/:productId/images/:imageId | mixed (`OptionalJwtAuthGuard`) | inherited from product visibility | — | streamed file | `ProductImagesService` (composes `OwnershipService`/`AuthorizationService` directly) | ✅ done | ✅ done |
+| DELETE | /products/:productId/images/:imageId | JWT | owner | — | 204 | `ProductOwnershipGuard` (reused) | ✅ done | ✅ done |
 
-All planned endpoints follow the existing conventions without exception:
-server-derived identity, generic non-disclosing 403s, `whitelist:true`
-DTO validation, Swagger decoration on every route, e2e coverage before
-merge. No implementation code is included here — this is the target
-inventory only.
+All three implemented endpoints follow the existing conventions without
+exception: server-derived identity, generic non-disclosing 403s,
+`whitelist:true` DTO validation, Swagger decoration on every route, e2e
+coverage before merge. See Section 6's Phase 22 status note for the full
+implementation summary.
 
 ---
 
@@ -1418,8 +1478,8 @@ found stale before the prior audit session fixed it.
 | Rate limiting | Not implemented | optional | required | P2 |
 | CORS | Not configured (intentional — no frontend origin defined) | not required | required once a frontend exists | — |
 | Helmet | ✅ implemented | done | done | — |
-| Body limits | ✅ Express/Nest defaults, appropriate | done | revisit if upload (Phase 22) changes typical payload size | — |
-| Environment validation | ✅ fails fast, 7 required vars | done | add `FILE_STORAGE_DIR` in Phase 22 | — |
+| Body limits | ✅ Express/Nest defaults + explicit 5MB image upload cap (Phase 22) | done | done | — |
+| Environment validation | ✅ fails fast, 7 required vars + optional `FILE_STORAGE_DIR` (Phase 22) | done | done | — |
 | Secrets handling | ✅ no committed secrets | done | add secret-management integration (Vault/SSM) | future, out of this plan's scope |
 | Docker | ✅ built+run verified | done | add app service to a deployment-target compose file once one exists | — |
 | Health checks | ✅ DB+Redis | done | add readiness vs. liveness distinction if ever behind an orchestrator | future |
@@ -1443,8 +1503,8 @@ production deployment.
 |---|---|---|---|
 | Authentication | ✅ JWT + rotation + reuse detection | none | — |
 | Authorization (RBAC) | ✅ live DB re-check, OR/AND semantics | none | — |
-| Ownership | ✅ 3 mirrored guards, ADMIN bypass | extend one hop for Variant/Inventory (Phase 21), extend to Product Images (Phase 22) | P0-adjacent (blocks Phase 21/22, not urgent standalone) |
-| ID spoofing | ✅ no DTO accepts an identity field | maintain the pattern in every new DTO (Phases 17-22) | ongoing discipline, not a task |
+| Ownership | ✅ 3 mirrored guards, ADMIN bypass, extended through Variant/Inventory (Phase 21) and Product Image (Phase 22) | none | — |
+| ID spoofing | ✅ no DTO accepts an identity field, including `CreateProductImageDto` (Phase 22) | maintain the pattern in every future DTO | ongoing discipline, not a task |
 | Price spoofing | ✅ server-derived everywhere | maintain in Variant pricing (Phase 21 — variant price is vendor-set at creation, which is legitimate, not spoofing, since the vendor owns the resource) | none new |
 | Quantity validation | ✅ positive-integer DTOs, existing pattern | apply identically to Restock/Adjust DTOs (Phase 21) | low |
 | Inventory race conditions | ✅ atomic UPDATE, proven | extend the same pattern to Restock/Adjust (Phase 21); prove via Phase 18's concurrent test methodology | P0 (Phase 18) / P1 (Phase 21 extension) |
@@ -1452,17 +1512,17 @@ production deployment.
 | Refund validation | ✅ validated against paid-refunded balance | none | — |
 | Webhook replay | ✅ two-layer idempotency | none | — |
 | Webhook signature verification | ❌ not implemented | genuinely blocked — no gateway chosen | FUTURE, not P0/P1 |
-| File upload security | N/A — no upload exists | full design in Section 8, implement in Phase 22 | P1 |
-| Path traversal | N/A today | structurally prevented by design (random filenames) in Phase 22 | P1 |
-| MIME spoofing | N/A today | content-based validation in Phase 22 design | P1 |
-| File size limits | N/A today | `limits.fileSize` in Phase 22 design | P1 |
-| Sensitive response leakage | ✅ allowlist mapping (`toSafeUser`) | extend the same discipline to `costPrice` exclusion in Variant responses (Phase 21) | P1 (part of Phase 21 scope, not separate) |
+| File upload security | ✅ implemented (Phase 22) — `FileInterceptor` size cap, content-based MIME sniffing, images-only allowlist | none | — |
+| Path traversal | ✅ structurally prevented (Phase 22) — server-generated filenames only, plus canonical resolved-path verification as defense-in-depth | none | — |
+| MIME spoofing | ✅ content-based validation (Phase 22) — never trusts client `Content-Type`/filename | none | — |
+| File size limits | ✅ `limits.fileSize` = 5MB (Phase 22) | none | — |
+| Sensitive response leakage | ✅ allowlist mapping (`toSafeUser`, extended to Variant responses Phase 21, `toPublicProductImage` Phase 22 — `storageKey`/`deletedAt` excluded) | none | — |
 | Prisma error leakage | ✅ every service translates known errors | Phase 23's exception filter closes the remaining generic-error consistency gap (not a leakage risk, a consistency one) | P1 |
 | Rate limiting | ❌ not implemented | genuinely optional for portfolio | P2 |
 | CORS | Not configured (intentional) | configure once a real frontend origin exists | FUTURE |
 | Helmet | ✅ implemented | none | — |
-| Secrets | ✅ no committed secrets | add `FILE_STORAGE_DIR` to `.env.example` (Phase 22), no secret value | P1 (documentation, not security work) |
-| Environment variables | ✅ fail-fast validation | extend `env.validation.ts` for `FILE_STORAGE_DIR` (Phase 22) | P1 |
+| Secrets | ✅ no committed secrets, `FILE_STORAGE_DIR` added to `.env.example` (Phase 22) with no secret value | none | — |
+| Environment variables | ✅ fail-fast validation, extended for `FILE_STORAGE_DIR` (Phase 22) | none | — |
 | Audit logging | ❌ schema-only, zero writers | genuinely out of scope — see Section 18/22 | FUTURE |
 
 ---
@@ -1481,19 +1541,22 @@ production deployment.
    transition, cross-vendor isolation, and MasterOrder-derivation
    correctness are covered in `test/orders.e2e-spec.ts` and
    `src/orders/vendor-orders.service.spec.ts`.
-3. **Inventory concurrency tests for Restock/Adjust** (Phase 21) —
-   concurrent restock + concurrent reservation racing against the same
-   variant, proving the `CHECK` constraints and atomic-UPDATE pattern
-   hold under the new write paths, not just the original checkout path.
-4. **Upload security tests** (Phase 22) — MIME-spoofing rejection
-   (uploading a `.php` file renamed to `.jpg` with a mismatched magic
-   number must be rejected), oversized-file rejection, ownership
-   enforcement on upload/delete, and — importantly — a test that an
-   unauthenticated request to a private/draft product's image streaming
-   endpoint is rejected.
+3. ~~**Inventory concurrency tests for Restock/Adjust** (Phase 21)~~ —
+   **DONE (2026-08-22).** Concurrent adjustment race test in
+   `test/catalog.e2e-spec.ts` proves the atomic-UPDATE pattern holds
+   under the new write path, not just the original checkout path.
+4. ~~**Upload security tests** (Phase 22)~~ — **DONE (2026-08-22).**
+   Content-sniffed MIME rejection (an HTML payload declared as `.png`
+   is rejected regardless of filename/Content-Type), oversized-file
+   rejection (413), ownership enforcement on upload/delete/stream, and
+   an unauthenticated request to a DRAFT product's image streaming
+   endpoint returning 404 (non-disclosing) are all covered in
+   `test/product-images.e2e-spec.ts`.
 5. **Default-variant invariant test** (Phase 21) — attempting to create a
    second `isDefault: true` variant on a `SIMPLE` product must fail
    cleanly, exercising whatever enforcement mechanism Section 22 resolves.
+   **Still not built** — the enforcement mechanism itself remains
+   genuinely unresolved (Section 22), so there is nothing yet to test.
 6. **Vendor verification transition tests** (Phase 17) — lowest-risk,
    but still needs invalid-transition and non-admin-actor coverage.
 
@@ -1524,7 +1587,8 @@ match, not introduce a new testing pattern):
 concurrency proof added following Phase 18; vendor-initiated order
 fulfillment lifecycle added following Phase 19; paginated public product
 list added following Phase 20; ProductVariant + Inventory foundation
-added following Phase 21.)
+added following Phase 21; secure local Product Image storage added
+following Phase 22.)
 
 - JWT authentication with refresh-token rotation and reuse detection.
 - RBAC with live database re-evaluation.
@@ -1558,8 +1622,16 @@ added following Phase 21.)
   **Claim precisely this** — not "full variant management" (see DO NOT
   CLAIM YET: no default-variant reassignment, no public variant
   browsing).
+- Secure local-filesystem Product Image upload/streaming/delete
+  (Phase 22) — content-based MIME validation (magic-byte sniffing, never
+  trusting the client's declared type or filename), server-generated
+  filenames that structurally rule out path traversal, and visibility
+  inherited from the parent product's own status. **Claim precisely
+  this** — local filesystem only, never S3/Spaces/MinIO/any object
+  storage; no image resizing/thumbnails/CDN; no reordering or enforced
+  single-primary-image invariant (see DO NOT CLAIM YET).
 - Two-layer webhook idempotency.
-- 407 unit + 295 e2e tests, including adversarial and concurrency
+- 447 unit + 319 e2e tests, including adversarial and concurrency
   scenarios.
 - Verified Docker build + CI pipeline against real Postgres/Redis.
 
@@ -1573,7 +1645,11 @@ added following Phase 21.)
   first-created variant); no attribute/option validation scheme exists
   (arbitrary JSON is accepted, by design, not oversight); no public
   variant-browsing endpoint exists.
-- Product image upload — becomes safe after Phase 22.
+- "Image management" or "image reordering" — Phase 22 covers
+  upload/stream/delete only; no list-all-images endpoint, no reordering,
+  no enforced single-primary-image invariant (`isPrimary` can be `true`
+  on more than one image simultaneously, same unresolved status as
+  `ProductVariant.isDefault`), no image resizing/thumbnails/CDN.
 - "Full order management" or "customer order cancellation" — Phase 19
   implemented only the vendor-initiated subset ADR-2 approved; customer-
   initiated cancellation, `PROCESSING`/`SHIPPED → CANCELLED`, returns, and
@@ -1639,10 +1715,10 @@ flowchart TD
     Vendor --> Shop[Shop — IMPLEMENTED]
     Vendor --> Product[Product — IMPLEMENTED]
     Category[Category — IMPLEMENTED] --> Product
-    Product --> Variant[ProductVariant — PLANNED Phase21]
-    Variant --> Inventory[Inventory — PLANNED Phase21]
-    Product --> Images[ProductImage — PLANNED Phase22]
-    Images -.->|streams from| LocalStorage[(Local File Storage — PLANNED Phase22)]
+    Product --> Variant[ProductVariant — IMPLEMENTED Phase21]
+    Variant --> Inventory[Inventory — IMPLEMENTED Phase21]
+    Product --> Images[ProductImage — IMPLEMENTED Phase22]
+    Images -.->|streams from| LocalStorage[(Local File Storage — IMPLEMENTED Phase22)]
     Variant --> Cart[Cart — IMPLEMENTED]
     Cart --> Checkout[Checkout — IMPLEMENTED]
     Checkout -->|reserves via atomic UPDATE| Inventory
@@ -1676,8 +1752,8 @@ phase sequence.
 ## Architecture
 - [x] Current architecture reconstructed and verified (Section 2)
 - [x] Remaining architecture planned (this document)
-- [ ] Phase 17-26 execution (Phases 17-21 complete as of 2026-08-22; Phases
-      22-26 not started)
+- [ ] Phase 17-26 execution (Phases 17-22 complete as of 2026-08-22; Phases
+      23-26 not started)
 
 ## Backend
 - [x] Vendor verification/activation (Phase 17) — completed 2026-08-22
@@ -1691,7 +1767,9 @@ phase sequence.
 - [x] ProductVariant CRUD (Phase 21) — completed 2026-08-22; vendor-owned
       only, no public route; `isDefault` reassignment not implemented
       (see Section 22)
-- [ ] Product Image upload/streaming (Phase 22)
+- [x] Product Image upload/streaming (Phase 22) — completed 2026-08-22;
+      no list endpoint, no reordering/primary-image enforcement (see
+      Section 22)
 
 ## Inventory
 - [x] Standalone view endpoint (Phase 21) — completed 2026-08-22
@@ -1716,15 +1794,22 @@ phase sequence.
 - [x] Foundation complete (no further P0/P1 work in this plan)
 
 ## Storage
-- [ ] `FILE_STORAGE_DIR` env var + validation (Phase 22)
-- [ ] Storage service (validate/write/stream/delete) (Phase 22)
-- [ ] Product Image API (Phase 22)
+- [x] `FILE_STORAGE_DIR` env var + validation (Phase 22) — completed
+      2026-08-22
+- [x] Storage service (validate/write/stream/delete) (Phase 22) —
+      completed 2026-08-22, `LocalFileStorageService`
+- [x] Product Image API (Phase 22) — completed 2026-08-22
 
 ## Security
 - [x] Ownership chain extended through Variant (Phase 21) — completed
       2026-08-22, via unchanged reuse of `ProductOwnershipGuard`
-- [ ] Ownership chain extended through Product Image (Phase 22)
-- [ ] Upload security controls (Phase 22)
+- [x] Ownership chain extended through Product Image (Phase 22) —
+      completed 2026-08-22, via unchanged reuse of `ProductOwnershipGuard`
+      for upload/delete; the mixed-auth stream route composes
+      `OwnershipService`/`AuthorizationService` directly instead
+- [x] Upload security controls (Phase 22) — completed 2026-08-22:
+      content-based MIME sniffing, images-only allowlist, size cap,
+      server-generated filenames, canonical path-traversal verification
 - [ ] Global exception filter (Phase 23)
 - [ ] Graceful shutdown (Phase 23)
 
@@ -1739,7 +1824,10 @@ phase sequence.
 - [x] Variant/Inventory tests incl. concurrency (Phase 21) — completed
       2026-08-22 (34 unit + 24 e2e, including a concurrent-adjustment
       race test)
-- [ ] Upload security tests (Phase 22)
+- [x] Upload security tests (Phase 22) — completed 2026-08-22 (46 unit +
+      24 e2e: MIME-spoofing rejection, oversized-file rejection,
+      path-traversal rejection, ownership on upload/delete/stream,
+      orphan-file cleanup on DB failure)
 
 ## Swagger
 - [ ] Auto-covered by each phase's endpoint additions (no separate task)
@@ -1756,12 +1844,13 @@ phase sequence.
       completed 2026-08-22
 - [x] `docs/database/order.md` §58 update (post-Phase 19) — completed
       2026-08-22
-- [x] `docs/database/catalog.md` §60 update (post-Phase 20) — completed
-      2026-08-22; a further update remains due post-Phase 21/22 for
-      Variant/Image/Inventory
+- [x] `docs/database/catalog.md` §60 update (post-Phase 20/21/22) —
+      completed 2026-08-22 for Variant/Inventory (Phase 21) and Image
+      (Phase 22)
 - [ ] `docs/API.md` refresh (Phase 25)
 - [ ] README refresh (Phase 25)
-- [ ] `.env.example` update for `FILE_STORAGE_DIR` (Phase 22)
+- [x] `.env.example` update for `FILE_STORAGE_DIR` (Phase 22) — completed
+      2026-08-22
 
 ## CI/CD
 - [x] Pipeline already covers build/lint/test for any new code

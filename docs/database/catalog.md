@@ -1787,10 +1787,10 @@ Vendor isolation                  APPROVED
 
 Prisma models                     IMPLEMENTED
 Database migration                 CREATED
-API implementation                 PARTIALLY IMPLEMENTED (Phases 11, 20, 21)
+API implementation                 PARTIALLY IMPLEMENTED (Phases 11, 20, 21, 22)
 Redis integration                  NOT IMPLEMENTED
 BullMQ integration                  NOT IMPLEMENTED
-Tests                              IMPLEMENTED (Phases 11, 20, 21, for what exists)
+Tests                              IMPLEMENTED (Phases 11, 20, 21, 22, for what exists)
 ```
 
 > Phase 11 implemented Category management (`GET /api/categories`,
@@ -1848,6 +1848,46 @@ Tests                              IMPLEMENTED (Phases 11, 20, 21, for what exis
 > point a `SALE`-type `InventoryTransaction` is recorded all remain out
 > of this phase's scope. See this phase's final report for the full
 > reasoning behind each of these boundaries.
+
+> Phase 22 implemented the `ProductImage` application layer — upload
+> (`POST /api/products/:productId/images`, multipart), streaming
+> retrieval (`GET /api/products/:productId/images/:imageId`), and
+> deletion (`DELETE /api/products/:productId/images/:imageId`) — using
+> **secure local filesystem storage only** (`LocalFileStorageService`,
+> `src/storage/`), never S3/Spaces/MinIO/any object storage. This
+> **supersedes §25's original "object storage" framing** below, which
+> predates this decision — the schema's `url`/`storageKey` split already
+> made either backend possible without a migration, and local filesystem
+> is what was actually built. Upload/delete ownership reuses
+> `ProductOwnershipGuard` unmodified against the `:productId` route
+> param, exactly as Phase 21 established. Files are written under
+> server-generated (`crypto.randomUUID()`) filenames only — the client's
+> original filename is never used as a stored path, which structurally
+> rules out path traversal from client input; canonical resolved-path
+> verification (`LocalFileStorageService.resolveSafePath`) is a second,
+> defense-in-depth layer on top of that. Content is validated by
+> magic-byte sniffing (the `file-type` package) against an
+> images-only allowlist (`image/jpeg`, `image/png`, `image/webp`), never
+> by the client's declared `Content-Type` or filename extension; the
+> upload size cap (5 MB) is the one concrete figure
+> `docs/remaining-architecture-plan.md` Section 8 gives ("e.g. 5 MB" —
+> treated as the approved limit, flagged here as a hedge rather than a
+> hard mandate). The streaming endpoint's visibility is **inherited from
+> the parent Product's own `status`** — `ACTIVE` is public, anything else
+> requires the caller to own the product or be an ADMIN — never a
+> separate visibility flag on `ProductImage` itself. Deletion is a hard
+> delete of the DB row, then a best-effort on-disk file removal (logged,
+> not surfaced, on failure); the reverse order (file first) was
+> deliberately not chosen, since it risks a DB row pointing at a missing
+> file, a worse failure mode than a harmless orphaned file. `sortOrder`
+> defaults to `0` and is never reassigned by this phase (no reordering
+> endpoint exists), and **`isPrimary` has no uniqueness enforcement** —
+> §26's "primary-image rules are enforced" is aspirational, not yet
+> built, the same genuinely-open status Phase 21 already recorded for
+> `ProductVariant.isDefault`. No list-all-images-for-a-product endpoint
+> exists (not part of the approved Section 11 API table) and existing
+> `Product`/`ProductVariant` responses are completely unchanged — a
+> vendor learns an image's id from its own upload response.
 
 This document represents the approved Catalog architecture for the
 initial production-grade multi-vendor e-commerce implementation.

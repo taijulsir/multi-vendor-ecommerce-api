@@ -1703,6 +1703,20 @@ inside this architectural reference. Status as of this note:
   ADR-4 did not cover remains genuinely unresolved and was not invented;
   see `docs/database/catalog.md` §60 and `docs/remaining-architecture-plan.md`
   Section 22.
+* **Implemented (Phase 22):** secure local filesystem storage for
+  `ProductImage` (`src/storage/LocalFileStorageService`) — never S3,
+  Spaces, MinIO, or any object storage — per
+  `docs/remaining-architecture-plan.md` Section 8. Upload/delete
+  ownership reuses the existing `ProductOwnershipGuard` unchanged, the
+  same `:productId`-route-param pattern ADR-4 already established for
+  `ProductVariant`/`Inventory`. Unlike ADR-1/2/3/4, this phase does
+  introduce one genuinely new infrastructure concern beyond §18-26's
+  existing principles: an unauthenticated/mixed-auth route (image
+  streaming, `GET /api/products/:productId/images/:imageId`), whose
+  public-vs-owner-only visibility is inherited from the parent
+  `Product.status` rather than the caller's own identity. See
+  `docs/database/catalog.md` §60 for the full storage/validation/
+  deletion design.
 
 None of these decisions change this document's existing architectural
 principles (§18-26) — they are applications of those principles to

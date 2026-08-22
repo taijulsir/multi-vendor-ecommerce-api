@@ -31,6 +31,19 @@ export function validateEnvironment(
     throw new Error('REDIS_PORT must be a valid TCP port');
   }
 
+  // Optional — LocalFileStorageService (Phase 22) falls back to
+  // `./storage/uploads` (docs/remaining-architecture-plan.md Section 8)
+  // when unset. Only validated here, never given a machine-specific
+  // hardcoded default: if the operator sets it, it must be a non-empty
+  // path, not e.g. an accidentally-blank env value.
+  if (
+    config.FILE_STORAGE_DIR !== undefined &&
+    (typeof config.FILE_STORAGE_DIR !== 'string' ||
+      config.FILE_STORAGE_DIR.trim() === '')
+  ) {
+    throw new Error('FILE_STORAGE_DIR must be a non-empty path if set');
+  }
+
   return {
     ...config,
     PORT: port,
