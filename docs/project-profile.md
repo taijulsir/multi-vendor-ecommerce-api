@@ -6,7 +6,7 @@ Resume/portfolio material for the Multi-Vendor E-Commerce API. Every claim below
 
 ### One-line description
 
-A multi-vendor e-commerce backend (NestJS + PostgreSQL + Prisma) with JWT auth, RBAC/ownership authorization, atomic multi-vendor checkout, and a concurrency-safe payment/refund/webhook foundation — 54 routes, 486 unit + 329 e2e tests.
+A multi-vendor e-commerce backend (NestJS + PostgreSQL + Prisma) with JWT auth, RBAC/ownership authorization, atomic multi-vendor checkout, and a payment/refund/webhook foundation with a documented, tested, and fixed refund-settlement concurrency bug — 54 routes, 486 unit + 329 e2e tests.
 
 ---
 
@@ -43,13 +43,13 @@ A production-oriented, multi-vendor e-commerce backend built with NestJS, TypeSc
 
 *(120 words)*
 
-A production-oriented, multi-vendor e-commerce backend built with NestJS, TypeScript, PostgreSQL, and Prisma ORM. It implements the complete customer journey — JWT authentication with refresh-token rotation, cart management, atomic multi-vendor checkout, and order viewing — alongside the vendor journey of onboarding, verification/activation, shop and catalog management (products, variants, inventory, images), and order fulfillment. A payment/refund/webhook foundation handles idempotent event ingestion and concurrency-safe refund settlement, including a documented and fixed lost-update race condition proven safe under real concurrent load. The project is backed by 486 unit tests and 329 end-to-end tests against a real PostgreSQL database, a fully audited Swagger/OpenAPI surface and Postman collection, Docker, and a GitHub Actions CI pipeline — all independently verified, not just configured.
+A production-oriented, multi-vendor e-commerce backend built with NestJS, TypeScript, PostgreSQL, and Prisma ORM. It implements the complete customer journey — JWT authentication with refresh-token rotation, cart management, atomic multi-vendor checkout, and order viewing — alongside the vendor journey of onboarding, verification/activation, shop and catalog management (products, variants, inventory, images), and order fulfillment. A payment/refund/webhook foundation handles idempotent event ingestion, including a lost-update race condition in refund-settlement accumulation that was found, fixed, and proven correct under real concurrent load with dedicated tests. The project is backed by 486 unit tests and 329 end-to-end tests against a real PostgreSQL database, a fully audited Swagger/OpenAPI surface and Postman collection, Docker, and a GitHub Actions CI pipeline — all independently verified, not just configured.
 
 ---
 
 ### GitHub project description
 
-Multi-vendor e-commerce backend (NestJS, TypeScript, PostgreSQL, Prisma) — JWT auth, RBAC + ownership authorization, atomic multi-vendor checkout, concurrency-safe payments/refunds/webhooks. 486 unit + 329 e2e tests, Docker, CI.
+Multi-vendor e-commerce backend (NestJS, TypeScript, PostgreSQL, Prisma) — JWT auth, RBAC + ownership authorization, atomic multi-vendor checkout, a payment/refund/webhook foundation with a fixed and tested settlement-concurrency bug. 486 unit + 329 e2e tests, Docker, CI.
 
 ---
 
