@@ -1,7 +1,7 @@
 {
   "name": "multi-vendor-ecommerce-api",
   "version": "0.0.1",
-  "description": "",
+  "description": "Multi-vendor e-commerce backend (NestJS, TypeScript, PostgreSQL, Prisma) with JWT auth, RBAC/ownership authorization, atomic multi-vendor checkout, and a concurrency-safe payment/refund/webhook foundation.",
   "author": "",
   "private": true,
   "license": "UNLICENSED",

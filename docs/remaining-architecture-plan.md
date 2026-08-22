@@ -1045,8 +1045,8 @@ dependency analysis.
 - **Objective:** bring README, `docs/API.md`, `docs/database/*.md`, and
   the Postman collection/environment up to date with everything Phases
   17-24 added. **Extended scope (as actually executed):** first fix
-  `docs/final-system-audit.md`'s M-1 finding (a refund-settlement
-  concurrency bug), then proceed with the documentation/Postman work.
+  the M-1 finding (a refund-settlement concurrency bug) recorded below,
+  then proceed with the documentation/Postman work.
 - **In scope:** exactly what Section 12/13 specify, plus the M-1 fix.
 - **Out of scope:** any content change unrelated to Phases 17-24's actual
   output; any new business domain; any API contract change.
@@ -1063,19 +1063,25 @@ dependency analysis.
 > .handleRefundOutcome` rewritten to use the same atomic-conditional-
 > `UPDATE` pattern already established by `checkout.service.ts`
 > (inventory reservation) and `vendor-orders.service.ts` (status
-> transition), instead of a read-then-absolute-set — closing the lost-
-> update race `docs/final-system-audit.md`'s M-1 finding described. Full
-> root-cause/fix/proof record lives in that document's new **Section
-> 24a** (not duplicated here, to avoid two sources of truth for the same
-> resolution). No Prisma schema change was made or required. 2 unit
+> transition), instead of a read-then-absolute-set — closing a lost-
+> update race: two genuinely concurrent refund settlements against the
+> same payment could previously result in only one being reflected in
+> `Payment.refundedAmount`. No Prisma schema change was made or
+> required. 2 unit
 > tests updated/added (`webhooks.service.spec.ts`) + 2 new concurrency
 > e2e tests (`payments.e2e-spec.ts`, real Postgres, real webhook
 > endpoint, `Promise.all` — no artificial sleep), all passing; full
 > suite (486 unit / 329 e2e) green across repeated runs. One narrower,
-> out-of-scope-for-M-1 concurrency observation was found while fixing it
-> (refund-*creation*-time balance validation, `PaymentsService
-> .createRefund`) and intentionally left unfixed — tracked as L-3 in the
-> audit document, not invented as a new business rule.
+> out-of-scope-for-M-1 concurrency observation was found while fixing it:
+> `PaymentsService.createRefund`'s refundable-balance check
+> (`paidAmount - refundedAmount`) is a plain read-then-decide validation,
+> not an atomic conditional `UPDATE` — two concurrent ADMIN refund-
+> *creation* requests against the same payment could both read the same
+> `refundedAmount` and both pass validation. This is a narrower,
+> lower-severity gap than M-1 (M-1 was in *settlement*, already fixed
+> above; this is in *creation-time validation* only) and was
+> intentionally left unfixed as out of scope for this phase — recorded
+> here as a known limitation, not invented as a new business rule.
 >
 > **Documentation/Postman refresh: IMPLEMENTED (2026-08-22).** Swagger
 > audited against a live `/api/docs-json` capture — confirmed all 54
