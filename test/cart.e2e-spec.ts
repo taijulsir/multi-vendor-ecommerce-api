@@ -6,6 +6,7 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 
 import { AppModule } from './../src/app.module';
+import { AllExceptionsFilter } from './../src/common/filters/all-exceptions.filter';
 import { PrismaService } from './../src/prisma/prisma.service';
 
 /**
@@ -72,6 +73,7 @@ describe('Cart API (e2e)', () => {
     prisma = app.get(PrismaService);
 
     app.setGlobalPrefix('api');
+    app.useGlobalFilters(new AllExceptionsFilter());
     app.useGlobalPipes(
       new ValidationPipe({
         whitelist: true,

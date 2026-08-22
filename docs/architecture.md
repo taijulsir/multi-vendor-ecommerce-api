@@ -714,6 +714,26 @@ Examples:
 
 Business services should throw meaningful domain-level exceptions instead of returning ambiguous error values.
 
+**Global exception filter (Phase 23).** `AllExceptionsFilter`
+(`src/common/filters/all-exceptions.filter.ts`), registered once via
+`app.useGlobalFilters()` in `src/main.ts`, is the last line of defense,
+not the primary error-handling mechanism. Every service already
+translates the Prisma error codes it can produce into the typed
+exceptions above *before* they would ever reach this filter, so every
+`HttpException` — however it was constructed — is passed through with
+its existing status code and response body completely unchanged; this
+filter never re-normalizes an already-meaningful 401/403/404/409 into
+something generic. What it does own: a narrow safety net for a Prisma
+error that somehow escapes service-level translation (`P2002` → 409,
+`P2025` → 404, matching the same statuses those codes already carry
+everywhere else in the codebase), and a safe, detail-free 500 for any
+other exception — any other Prisma error, any other `Error`, or any
+non-`Error` thrown value. No stack trace, Prisma metadata, SQL, or
+filesystem path ever reaches the client; that detail is only ever
+written server-side via NestJS's built-in `Logger`, and only for the 5xx
+case — routine 4xx business exceptions are not logged, since they are
+normal, expected control flow, not failures.
+
 ---
 
 # 18. Authentication Architecture
@@ -1477,6 +1497,18 @@ The application should not contain environment-specific business logic.
 
 Configuration should come from environment variables.
 
+**Graceful shutdown (Phase 23).** `app.enableShutdownHooks()`
+(`src/main.ts`) wires a real OS termination signal (`SIGTERM`/`SIGINT` —
+e.g. `docker stop`) through to NestJS's own application-close lifecycle,
+so `PrismaService`/`RedisService`'s existing `onModuleDestroy()` hooks
+(`$disconnect()`/`client.quit()` respectively — both already implemented,
+neither changed by this phase) run before the process exits, instead of
+connections being dropped mid-request. No new shutdown infrastructure was
+introduced: both hooks already existed; this only makes NestJS actually
+invoke them on a termination signal. `LocalFileStorageService` (Phase 22)
+holds no long-lived connection or handle and needs no shutdown hook —
+uploaded files on disk are never touched during shutdown.
+
 ---
 
 # 33. Database Documentation
@@ -1627,6 +1659,8 @@ Unit testing                   ✅
 E2E testing                    ✅
 Docker Compose                 ✅
 Dependency security audit      ✅
+Global exception filter        ✅
+Graceful shutdown              ✅
 ```
 
 The business modules will be implemented incrementally according to the project implementation plan.
@@ -1717,12 +1751,23 @@ inside this architectural reference. Status as of this note:
   `Product.status` rather than the caller's own identity. See
   `docs/database/catalog.md` §60 for the full storage/validation/
   deletion design.
+* **Implemented (Phase 23):** cross-cutting production hardening, not an
+  ADR (no business rule involved) — global exception filter
+  (`AllExceptionsFilter`, §17) and graceful shutdown (`enableShutdownHooks()`,
+  §32). Deliberately preserves every existing HTTP status semantic
+  (401/403/404/409 mean exactly what each service already made them mean)
+  rather than normalizing them; the only *new* client-visible behavior is
+  a safe, detail-free 500 for whatever previously would have reached
+  NestJS's own default (un-branded, but already-safe per
+  `docs/project-completion-audit.md` Part 5 §7) handler.
 
 None of these decisions change this document's existing architectural
 principles (§18-26) — they are applications of those principles to
 domains that either now have controllers (ADR-1/2/3) or don't yet
 (ADR-4), per the "existence of a domain does not mean its implementation
-must be created immediately" rule in §5.
+must be created immediately" rule in §5. Phase 23 is the one exception
+to "domain-application" framing — it is cross-cutting infrastructure, not
+a new domain, which is why it isn't numbered as an ADR.
 
 ````
 

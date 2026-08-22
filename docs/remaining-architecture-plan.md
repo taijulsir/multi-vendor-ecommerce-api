@@ -851,11 +851,10 @@ dependency analysis.
 > + 21 (`ProductImagesService`/`ProductImagesController`) + 24 new e2e
 > tests (real Postgres, a real temporary `FILE_STORAGE_DIR` created/torn
 > down per test run, real image fixtures — MIME sniffing was never
-> mocked) added, all passing; full suite (447 unit / e2e green, see this
-> phase's final report) green; `npx prisma validate`/`migrate status`
-> clean with zero schema changes.
+> mocked) added, all passing; full suite (447 unit / 319 e2e) green;
+> `npx prisma validate`/`migrate status` clean with zero schema changes.
 
-## Phase 23 — Production Hardening
+## Phase 23 — Production Hardening — IMPLEMENTED (2026-08-22), narrowed
 
 - **Objective:** implement P1.7, P1.8, and evaluate P2's rate limiting.
 - **In scope:** global exception filter, graceful shutdown.
@@ -878,6 +877,65 @@ dependency analysis.
   as service-translated ones; `SIGTERM` closes DB/Redis connections before
   exit (verifiable via Docker `docker stop` + log inspection).
 - **Risk/ambiguity:** low.
+
+> **STATUS: IMPLEMENTED (2026-08-22).** Rate limiting evaluated and
+> confirmed still genuinely optional (Section 14) — not built, per this
+> phase's own out-of-scope note and the task's explicit instruction not
+> to add it.
+>
+> **Global exception filter:** `AllExceptionsFilter`
+> (`src/common/filters/all-exceptions.filter.ts`, `@Catch()` — catches
+> everything), registered once via `app.useGlobalFilters()` in
+> `src/main.ts` (and mirrored into every e2e spec's own test bootstrap,
+> which reconstructs `main.ts`'s setup rather than importing it). Every
+> `HttpException` is passed through **completely unchanged** — status
+> and response body both — which is what keeps 401/403/404/409 meaning
+> exactly what each service already made them mean; confirmed by the full
+> pre-existing 465-unit/327-e2e suite staying green with zero assertion
+> changes needed. The filter only owns two things: (1) a narrow safety
+> net for a Prisma error that somehow escapes a service's own translation
+> (`P2002` → 409, `P2025` → 404 — the same statuses those codes already
+> carry everywhere else), and (2) a safe, generic 500 for anything else —
+> any other Prisma error, any other `Error`, or a non-`Error` thrown
+> value (a thrown string/object/`undefined`/circular-reference object all
+> handled without crashing the filter itself). No stack trace, Prisma
+> metadata, SQL, or filesystem path ever reaches the client — verified
+> directly via `test/exception-handling.e2e-spec.ts`'s 500 case, which
+> triggers a **real, already-existing** escaped-Prisma-error condition
+> (a malformed UUID reaching a `@db.Uuid` column via
+> `GET /api/categories/:categoryId` — no controller in this codebase
+> applies `ParseUUIDPipe`, so the raw string reaches Prisma directly).
+> Confirmed at runtime this specific case surfaces as a
+> `PrismaClientKnownRequestError` whose code is neither `P2002` nor
+> `P2025` — exactly the "any other Prisma error" branch, falling through
+> to the generic 500 exactly as designed — not a synthetic test-only
+> endpoint.
+>
+> **Response envelope:** exactly the same three fields NestJS's own
+> `HttpException` already produces (`statusCode`, `message`, `error`) —
+> no request-id/correlation-id/timestamp/path was added, since none is
+> required by any source document (see this phase's Ambiguities note).
+>
+> **Graceful shutdown:** `app.enableShutdownHooks()` added to
+> `src/main.ts` — the only change. `PrismaService.onModuleDestroy()`
+> (`$disconnect()`) and `RedisService.onModuleDestroy()` (`client.quit()`)
+> already existed and were already correct; this only makes NestJS
+> actually invoke them on a real `SIGTERM`/`SIGINT` instead of never
+> calling them at all outside of a test's own explicit `app.close()`.
+> `LocalFileStorageService` (Phase 22) holds no long-lived resource and
+> was deliberately given no shutdown hook. Verified in
+> `test/graceful-shutdown.e2e-spec.ts` that `enableShutdownHooks()` +
+> `app.close()` actually invokes both `onModuleDestroy()` methods
+> (spied directly) — genuine OS-signal delivery is not exercised in Jest
+> (documented as a limitation, not faked; see this phase's final report),
+> consistent with this phase's own instruction to document rather than
+> fabricate a signal-level test.
+>
+> 18 new unit tests (`AllExceptionsFilter`) + 8 new e2e tests
+> (`exception-handling.e2e-spec.ts` ×6, `graceful-shutdown.e2e-spec.ts`
+> ×2) added, all passing; full suite (465 unit / 327 e2e) green, e2e
+> re-run three times with no flake. `npx prisma validate`/`migrate
+> status` clean with zero schema changes — none expected, none made.
 
 ## Phase 24 — Engineering Cleanup
 
@@ -1473,8 +1531,8 @@ found stale before the prior audit session fixed it.
 
 | Item | Current state | Portfolio-required | Production-required | Future |
 |---|---|---|---|---|
-| Global exception filter | Not implemented (NestJS default, confirmed safe) | recommended (P1.7) | required | — |
-| Graceful shutdown | Not implemented | recommended (P1.8) | required | — |
+| Global exception filter | ✅ implemented (Phase 23) — `AllExceptionsFilter`, last-line-of-defense only | done | done | — |
+| Graceful shutdown | ✅ implemented (Phase 23) — `app.enableShutdownHooks()` | done | done | — |
 | Rate limiting | Not implemented | optional | required | P2 |
 | CORS | Not configured (intentional — no frontend origin defined) | not required | required once a frontend exists | — |
 | Helmet | ✅ implemented | done | done | — |
@@ -1486,7 +1544,7 @@ found stale before the prior audit session fixed it.
 | CI/CD | ✅ full pipeline, real services | done | add deployment step once a target exists | future, explicitly out of scope per the prior audit |
 | Prisma migration discipline | ✅ 13 migrations, `migrate status` clean | done | done | — |
 | Logging | No structured logging framework (NestJS default `Logger` only) | acceptable | a structured logger (pino/winston) would be expected | P2, not in this plan's phase list — flagged here for completeness, not scheduled |
-| Error handling | ✅ every service translates Prisma errors | done | pairs with Phase 23's exception filter for full consistency | — |
+| Error handling | ✅ every service translates Prisma errors + global exception filter as a safety net (Phase 23) | done | done | — |
 
 **This plan does not claim "production ready"** for the whole system —
 only specific, itemized things are marked "done." The overall system
@@ -1517,7 +1575,7 @@ production deployment.
 | MIME spoofing | ✅ content-based validation (Phase 22) — never trusts client `Content-Type`/filename | none | — |
 | File size limits | ✅ `limits.fileSize` = 5MB (Phase 22) | none | — |
 | Sensitive response leakage | ✅ allowlist mapping (`toSafeUser`, extended to Variant responses Phase 21, `toPublicProductImage` Phase 22 — `storageKey`/`deletedAt` excluded) | none | — |
-| Prisma error leakage | ✅ every service translates known errors | Phase 23's exception filter closes the remaining generic-error consistency gap (not a leakage risk, a consistency one) | P1 |
+| Prisma error leakage | ✅ every service translates known errors + `AllExceptionsFilter` safety net for anything that escapes (Phase 23) | none | — |
 | Rate limiting | ❌ not implemented | genuinely optional for portfolio | P2 |
 | CORS | Not configured (intentional) | configure once a real frontend origin exists | FUTURE |
 | Helmet | ✅ implemented | none | — |
@@ -1588,7 +1646,8 @@ concurrency proof added following Phase 18; vendor-initiated order
 fulfillment lifecycle added following Phase 19; paginated public product
 list added following Phase 20; ProductVariant + Inventory foundation
 added following Phase 21; secure local Product Image storage added
-following Phase 22.)
+following Phase 22; consistent global error contract + graceful shutdown
+added following Phase 23.)
 
 - JWT authentication with refresh-token rotation and reuse detection.
 - RBAC with live database re-evaluation.
@@ -1630,8 +1689,17 @@ following Phase 22.)
   this** — local filesystem only, never S3/Spaces/MinIO/any object
   storage; no image resizing/thumbnails/CDN; no reordering or enforced
   single-primary-image invariant (see DO NOT CLAIM YET).
+- A consistent, safe global error contract and graceful shutdown
+  (Phase 23) — every response, however the underlying exception was
+  produced, carries the same `{statusCode, message, error}` shape with no
+  stack trace/Prisma internals/SQL/filesystem path ever exposed, and
+  `SIGTERM` drains DB/Redis connections cleanly instead of dropping them
+  mid-request. **Claim precisely this** — existing 401/403/404/409
+  semantics are unchanged, not "normalized" (see DO NOT CLAIM YET: rate
+  limiting/structured logging/secrets management still make "production
+  ready" unqualified untrue).
 - Two-layer webhook idempotency.
-- 447 unit + 319 e2e tests, including adversarial and concurrency
+- 465 unit + 327 e2e tests, including adversarial and concurrency
   scenarios.
 - Verified Docker build + CI pipeline against real Postgres/Redis.
 
@@ -1752,8 +1820,8 @@ phase sequence.
 ## Architecture
 - [x] Current architecture reconstructed and verified (Section 2)
 - [x] Remaining architecture planned (this document)
-- [ ] Phase 17-26 execution (Phases 17-22 complete as of 2026-08-22; Phases
-      23-26 not started)
+- [ ] Phase 17-26 execution (Phases 17-23 complete as of 2026-08-22; Phases
+      24-26 not started)
 
 ## Backend
 - [x] Vendor verification/activation (Phase 17) — completed 2026-08-22
@@ -1810,8 +1878,11 @@ phase sequence.
 - [x] Upload security controls (Phase 22) — completed 2026-08-22:
       content-based MIME sniffing, images-only allowlist, size cap,
       server-generated filenames, canonical path-traversal verification
-- [ ] Global exception filter (Phase 23)
-- [ ] Graceful shutdown (Phase 23)
+- [x] Global exception filter (Phase 23) — completed 2026-08-22,
+      `AllExceptionsFilter`, last-line-of-defense only, no existing
+      HttpException status/body changed
+- [x] Graceful shutdown (Phase 23) — completed 2026-08-22,
+      `app.enableShutdownHooks()`
 
 ## Testing
 - [x] Vendor verification/activation tests, unit + e2e (Phase 17) —
@@ -1828,9 +1899,17 @@ phase sequence.
       24 e2e: MIME-spoofing rejection, oversized-file rejection,
       path-traversal rejection, ownership on upload/delete/stream,
       orphan-file cleanup on DB failure)
+- [x] Exception filter + graceful shutdown tests (Phase 23) — completed
+      2026-08-22 (18 unit + 8 e2e: HttpException pass-through for
+      400/401/403/404/409, Prisma safety-net mapping, unknown-Error and
+      non-Error safe 500, no internal-detail leakage, shutdown-hook
+      invocation proof). Genuine OS-signal (`SIGTERM`) delivery is not
+      exercised in Jest — documented as a limitation, not faked.
 
 ## Swagger
-- [ ] Auto-covered by each phase's endpoint additions (no separate task)
+- [x] Auto-covered by each phase's endpoint additions (no separate task) —
+      Phase 23 added no new endpoints, so no Swagger change was needed or
+      made
 
 ## Postman
 - [ ] Vendor verification requests (Phase 25)
@@ -1847,6 +1926,8 @@ phase sequence.
 - [x] `docs/database/catalog.md` §60 update (post-Phase 20/21/22) —
       completed 2026-08-22 for Variant/Inventory (Phase 21) and Image
       (Phase 22)
+- [x] `docs/architecture.md` §17/§32/§37/§39 update (post-Phase 23) —
+      completed 2026-08-22, global exception filter + graceful shutdown
 - [ ] `docs/API.md` refresh (Phase 25)
 - [ ] README refresh (Phase 25)
 - [x] `.env.example` update for `FILE_STORAGE_DIR` (Phase 22) — completed
