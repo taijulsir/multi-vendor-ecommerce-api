@@ -3,9 +3,28 @@ import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Phase 23: wires OS SIGTERM/SIGINT through to Nest's own lifecycle —
+  // `app.close()` (which already runs on every test's `afterAll`, and
+  // already correctly triggers PrismaService/RedisService's existing
+  // `onModuleDestroy` hooks) is now also invoked automatically on a real
+  // process termination signal, so a container `docker stop` drains
+  // in-flight requests and closes DB/Redis connections instead of the
+  // process dying mid-request. No new lifecycle hooks were added — both
+  // services already implement `onModuleDestroy` correctly; this only
+  // makes NestJS actually call it on a termination signal.
+  app.enableShutdownHooks();
+
+  // Phase 23: last-line-of-defense global exception filter — every
+  // service already translates domain-meaningful errors into typed
+  // HttpExceptions (passed through unchanged below); this only
+  // guarantees a safe, detail-free response for whatever exception type
+  // reaches here instead.
+  app.useGlobalFilters(new AllExceptionsFilter());
 
   // Standard NestJS-recommended baseline HTTP security headers
   // (https://docs.nestjs.com/security/helmet) — safe defaults with no
@@ -48,6 +67,10 @@ async function bootstrap() {
     .addTag('shops', 'Shop creation/retrieval/update')
     .addTag('categories', 'Platform-owned category taxonomy (ADMIN-managed)')
     .addTag('products', 'Vendor-owned products')
+    .addTag(
+      'product-images',
+      'Product image upload/stream/delete — local filesystem storage',
+    )
     .addTag('cart', "The authenticated user's active cart")
     .addTag('checkout', 'Cart → Order creation')
     .addTag('orders', "The authenticated customer's own orders")
