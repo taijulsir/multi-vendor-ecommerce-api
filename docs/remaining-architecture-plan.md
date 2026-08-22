@@ -14,22 +14,30 @@ Based on          docs/project-completion-audit.md (primary current-state
                    package.json, .env.example
 Status of P0/P1   Phase 17 (P0.1, Vendor Verification/Activation),
                    Phase 18 (P0.3, Concurrent Checkout E2E Proof),
-                   Phase 19 (P0.2, Order Status Lifecycle), and Phase 20
-                   (P1.4, Product/Category List Endpoints) all IMPLEMENTED
-                   as of 2026-08-22 — see Section 6's Phase 17-20 entries,
-                   `docs/database/vendor-shop.md` §22, `docs/database/
-                   order.md` §58, `docs/database/catalog.md` §60, and
-                   Section 16's testing-strategy note. Phase 18 added test
-                   coverage only (zero application code changed); Phase 19
-                   implemented the vendor-initiated subset of the order
-                   lifecycle only — customer-initiated cancellation was
-                   found unsupported by the source documents on direct
-                   re-reading and was not built (see Section 22). Phase 20
-                   implemented only `GET /products` (paginated, no
-                   filters) — the existing `GET /categories` was
-                   deliberately not retrofitted with the same pagination
-                   envelope, to avoid a breaking change to already-shipped
-                   Phase 11 behavior. Phases 21-26 NOT started; this
+                   Phase 19 (P0.2, Order Status Lifecycle), Phase 20
+                   (P1.4, Product/Category List Endpoints), and Phase 21
+                   (P1.5, ProductVariant + Inventory Foundation) all
+                   IMPLEMENTED as of 2026-08-22 — see Section 6's Phase
+                   17-21 entries, `docs/database/vendor-shop.md` §22,
+                   `docs/database/order.md` §58, `docs/database/
+                   catalog.md` §60, and Section 16's testing-strategy
+                   note. Phase 18 added test coverage only (zero
+                   application code changed); Phase 19 implemented the
+                   vendor-initiated subset of the order lifecycle only —
+                   customer-initiated cancellation was found unsupported
+                   by the source documents on direct re-reading and was
+                   not built (see Section 22). Phase 20 implemented only
+                   `GET /products` (paginated, no filters) — the existing
+                   `GET /categories` was deliberately not retrofitted with
+                   the same pagination envelope, to avoid a breaking
+                   change to already-shipped Phase 11 behavior. Phase 21
+                   implemented vendor-owned ProductVariant CRUD and
+                   Inventory view/restock/adjust, but deliberately made
+                   `isDefault` entirely server-computed and unreassignable
+                   (the "at most one default variant" enforcement
+                   mechanism was left genuinely undefined by the source
+                   documents — see Section 22) and added no public variant
+                   discovery endpoint. Phases 22-26 NOT started; this
                    document remains the plan for all remaining work.
 Baseline           2026-08-22 — Architecture Decision Register added below;
                     four decisions locked by explicit project-owner approval
@@ -209,10 +217,10 @@ model), and no `WalletTransaction` is ever created.
 | Vendor | ✅ | ✅ | ✅ create/view + verification/activation (Phase 17) | ✅ | ✅ | IMPLEMENTED (narrow transition matrix — see `docs/database/vendor-shop.md` §22) | safe |
 | Shop | ✅ | ✅ | ✅ | ✅ | ✅ | IMPLEMENTED | safe |
 | Category | ✅ | ✅ | ✅ (list/detail exist; list intentionally not retrofitted with pagination — see `docs/database/catalog.md` §60) | ✅ | ✅ | IMPLEMENTED | safe |
-| Product | ✅ | ✅ | ✅ list (Phase 20) + create/view/update (Phase 11) | ✅ | ✅ | IMPLEMENTED (core fields; no variants) | safe, narrowly (see §17) |
-| Product Variant | ✅ | ❌ | ❌ | ❌ | ⚠️ silently written by checkout's FK only | SCHEMA ONLY | do not claim |
+| Product | ✅ | ✅ | ✅ list (Phase 20) + create/view/update (Phase 11) | ✅ | ✅ | IMPLEMENTED (core fields; variants now purchasable, see below) | safe, narrowly (see §17) |
+| Product Variant | ✅ | ✅ CRUD (Phase 21) | ✅ vendor-owned, no public route | ✅ | ✅ | IMPLEMENTED (narrow — no default-reassignment; see `docs/database/catalog.md` §60) | safe, narrowly (see §17) |
 | Product Image | ✅ | ❌ | ❌ | ❌ | ❌ | SCHEMA ONLY | do not claim |
-| Inventory | ✅ | ⚠️ written inside checkout tx | ❌ | ⚠️ covered only via checkout e2e | ⚠️ | SCHEMA ONLY (no standalone layer) | do not claim |
+| Inventory | ✅ | ✅ view/restock/adjust (Phase 21) | ✅ vendor-owned | ✅ | ✅ | IMPLEMENTED (narrow — no `SALE` transaction type yet, see Section 22) | safe, narrowly (see §17) |
 | Cart | ✅ | ✅ | ✅ | ✅ | ✅ | IMPLEMENTED | safe |
 | Checkout | ✅ | ✅ | ✅ | ✅ | ✅ | IMPLEMENTED | safe |
 | Order Creation | ✅ | ✅ | ✅ | ✅ | ✅ | IMPLEMENTED | safe |
@@ -732,6 +740,38 @@ dependency analysis.
   points (default-variant enforcement mechanism, attribute-validation
   scheme) marked `BLOCKED` where genuinely undefined.
 
+> **STATUS: IMPLEMENTED (2026-08-22).** `POST/GET /api/products/:productId
+> /variants`, `GET/PATCH /api/products/:productId/variants/:variantId`,
+> `GET /api/products/:productId/variants/:variantId/inventory`,
+> `POST .../inventory/restock`, `POST .../inventory/adjust` — all nested
+> under `/products/:productId/...` specifically so `ProductOwnershipGuard`
+> could be reused **completely unchanged** (no new guard was written).
+> Files affected: new `src/catalog/product-variants/` folder (service,
+> controller, a separate `InventoryService`, DTOs, view util), registered
+> directly into the existing `catalog.module.ts` (no separate module
+> file — matches this codebase's established one-module-per-domain
+> convention more closely than the originally-sketched separate-module
+> approach). **Zero changes to `CheckoutService`, `CartService`, or any
+> other Phase 1-20 file** — confirmed via direct re-verification that
+> checkout already writes its `RESERVATION` `InventoryTransaction` row
+> (see Section 7/10 correction notes; this plan's own prior text was
+> stale on that point, not the code).
+>
+> **Default-variant reassignment was sidestepped, not resolved** — a
+> product's first variant is deterministically its default forever;
+> `isDefault` is not accepted by either DTO. **No public variant-browsing
+> endpoint was added** — extending `GET /products/slug/:slug` to include
+> variants was considered (Section 18 of the Phase 21 task explicitly
+> invited this) and declined in favor of zero risk to already-shipped
+> Phase 11/20 responses; every new route in this phase is vendor-
+> management-only.
+>
+> 34 new unit tests (variant service + inventory service + controller) +
+> 24 new e2e tests (including a concurrent-adjustment race test mirroring
+> Phase 18/19's technique) added, all passing; full suite (407 unit / 295
+> e2e) green; `npx prisma validate`/`migrate status` clean with zero
+> schema changes.
+
 ## Phase 22 — Secure Local Product Image Storage + Product Image API
 
 - **Objective:** implement P1.6 — see Section 8 for full design.
@@ -846,26 +886,40 @@ dependency analysis.
 Product (exists today)
    │  1:N
    ▼
-ProductVariant  ← MISSING: no create/update/list/delete API
+ProductVariant  ← IMPLEMENTED (Phase 21): create/list/detail/update API
    │  1:1
    ▼
-Inventory       ← MISSING: no standalone view/restock/adjust API
+Inventory       ← IMPLEMENTED (Phase 21): view/restock/adjust API
    │
-   ├── read at Cart-add time (validate availability)
-   ├── reserved at Checkout time (atomic UPDATE, already implemented
-   │    mechanically inside CheckoutService — just has no variant to
-   │    reserve against today because none can be created)
+   ├── read at Cart-add time (validate availability, unchanged, Phase 12)
+   ├── reserved at Checkout time (atomic UPDATE, unchanged, Phase 13 —
+   │    now has real variants to reserve against, created through the
+   │    Phase 21 API instead of only `prisma/seed.ts`)
    └── (SALE-type InventoryTransaction, per catalog.md §39, at
         "the point... defined by the Order and Payment lifecycle" —
-        not yet decided, see Section 22)
+        still not decided, still out of scope — see Section 22)
 ```
 
-**A product created today cannot actually be sold.** `CartService.
-addItem()` requires a `variantId`; none can ever exist without direct DB
-seeding (confirmed via `prisma/seed.ts` being the only current source of
-variant/inventory rows). This is the single most consequential gap in the
-current MVP for a live demo — a reviewer who clicks through the Swagger UI
-top-to-bottom cannot complete a purchase using only the API.
+> **STATUS: IMPLEMENTED (Phase 21, 2026-08-22).** **Correction to this
+> section's own prior text:** the line above previously claimed checkout
+> "has no variant to reserve against today because none can be created,"
+> which was accurate before this phase — and separately, an outdated
+> assumption a few paragraphs below (removed) claimed `CheckoutService`
+> writes no `InventoryTransaction` row at all. Direct re-verification of
+> `src/orders/checkout.service.ts` during this phase found that claim was
+> already stale even before Phase 21: `CheckoutService.checkout()` has
+> written a `RESERVATION`-type `InventoryTransaction` row per line item
+> since Phase 13/18 — nothing needed adding there. This document's own
+> text was the thing that was wrong, not the code; corrected here rather
+> than silently left stale.
+>
+> **A product can now actually be sold end-to-end through the API** —
+> vendor creates a Product (Phase 11) → creates a ProductVariant (Phase
+> 21, `POST /products/:productId/variants`) → the Inventory row is
+> created atomically with it → a customer adds that `variantId` to their
+> Cart (Phase 12, unchanged) → checks out (Phase 13, unchanged). See this
+> phase's final report for the exact endpoint list and the one
+> deliberately-unresolved area (default-variant reassignment).
 
 ## What the schema/docs already resolve (implement as-is, do not re-decide)
 
@@ -910,28 +964,34 @@ top-to-bottom cannot complete a purchase using only the API.
 
 ## What remains genuinely unresolved (mark BLOCKED, do not invent)
 
-- **`SIMPLE` product default-variant enforcement mechanism** — `catalog.md`
-  §20/§22 states the *invariant* ("one Product → maximum one active
-  default Variant") but not the *enforcement mechanism* (DB partial
-  unique index like `Cart`'s active-cart constraint, vs. application-layer
-  check-then-write inside a transaction). **BLOCKED — BUSINESS/DESIGN
-  DECISION REQUIRED** (implementation-detail-level, low business-rule
-  risk, but still not this plan's call to make unilaterally since it
-  affects schema-adjacent design).
+- **`SIMPLE` product default-variant *reassignment* mechanism** —
+  `catalog.md` §20/§22 states the *invariant* ("one Product → maximum one
+  active default Variant") but not the *enforcement mechanism* (DB
+  partial unique index like `Cart`'s active-cart constraint, vs.
+  application-layer check-then-write inside a transaction). **Phase 21
+  sidestepped this rather than resolving it**: a product's first variant
+  is deterministically made its default (satisfying "must have a
+  default"), and no mechanism exists anywhere to reassign it to a
+  different, later-created variant (trivially satisfying "at most one" by
+  never allowing a second assignment). **Still BLOCKED — BUSINESS/DESIGN
+  DECISION REQUIRED** specifically for: *reassigning* an existing
+  product's default variant. Not blocking for anything else — variant
+  CRUD itself is fully implemented.
 - **Attribute validation scheme** — `catalog.md` §18 explicitly says "The
   exact attribute-definition system is intentionally left open for future
-  Catalog expansion." There is no `AttributeDefinition` model. **BLOCKED**
-  — Phase 21 should accept arbitrary JSON attributes without a validation
-  scheme, exactly as the schema allows, rather than inventing one.
+  Catalog expansion." There is no `AttributeDefinition` model.
+  **Confirmed implemented as designed (Phase 21):** `CreateVariantDto`/
+  `UpdateVariantDto` accept arbitrary JSON attributes with no validation
+  scheme, exactly as the schema allows — nothing was invented.
 - **Exact point `SALE`-type InventoryTransaction is recorded** —
   `catalog.md` §39 says "will be defined by the Order and Payment
   lifecycle," which itself is only partially implemented (Section 9).
-  Reasonable interim behavior: record `RESERVATION` at checkout (already
-  happens mechanically today, just untyped as a `InventoryTransaction`
-  row — worth adding once Variant/Inventory API exists) and defer `SALE`
-  conversion until Phase 19's order-lifecycle work defines what "sale
-  finalized" means. **Do not invent a `SALE` trigger point not yet
-  supported by an actual payment-confirmed order state.**
+  **Still BLOCKED, unchanged by Phase 21** — `RESERVATION` continues to be
+  the only transaction type checkout writes (confirmed already correct,
+  see the purchasability-chain note above); `SALE` conversion remains
+  deferred until a future phase defines what "sale finalized" means. **Do
+  not invent a `SALE` trigger point not yet supported by an actual
+  payment-confirmed order state.**
 
 ---
 
@@ -1121,15 +1181,22 @@ Clearly separating the three points at which inventory is touched, per
 Cart-time validation           Checkout-time reservation        Order/Payment lifecycle
 ────────────────────           ─────────────────────────        ───────────────────────
 CartService.addItem()          CheckoutService.checkout()        NOT YET IMPLEMENTED
-already reads                  already does an atomic            (Section 9's Phase 19
-Inventory.onHand/reserved      conditional UPDATE:                is a prerequisite —
-to reject clearly-             reserved = reserved + qty          "SALE" typed transition
-unavailable adds               WHERE on_hand - reserved >= qty    needs an order-lifecycle
-(existing, unchanged)          (existing, unchanged, already      trigger that doesn't
-                                race-safe — confirmed in audit)    exist yet)
+already reads                  already does an atomic            ("SALE"-typed
+Inventory.onHand/reserved      conditional UPDATE:                transition needs an
+to reject clearly-             reserved = reserved + qty          order-lifecycle trigger
+unavailable adds               WHERE on_hand - reserved >= qty    that doesn't exist yet
+(existing, unchanged)          (existing, unchanged, already      even after Phase 19 —
+                                race-safe — confirmed in audit,   still deferred, see
+                                already writes a RESERVATION-      Section 22)
+                                type InventoryTransaction row —
+                                confirmed already correct, see
+                                Section 7's correction note)
 ```
 
-**Remaining work (Phase 21 scope):**
+**STATUS: IMPLEMENTED (Phase 21, 2026-08-22).** Every item below is done
+exactly as planned, except the `RELEASE`-row item (struck through) —
+this document's own prior text about checkout was stale (see Section 7's
+correction note); no code change was needed there.
 
 - **Stock creation:** implicit — creating a `ProductVariant` should create
   its `Inventory` row (1:1, `variantId` unique) in the same transaction,
@@ -1146,12 +1213,13 @@ unavailable adds               WHERE on_hand - reserved >= qty    needs an order
   `onHand >= 0` invariant enforced.
 - **Reservation/release:** already implemented mechanically inside
   `CheckoutService` (reservation) — release-on-checkout-failure is
-  already implicit (the transaction rolls back), but there is currently
-  no `RELEASE`-type `InventoryTransaction` row written, since
-  `InventoryTransaction` itself isn't written by checkout at all today
-  (only the `Inventory.reserved` column is updated). Phase 21 should add
-  the missing `InventoryTransaction` row-writing to make the *existing*
-  checkout reservation auditable, not just functional.
+  already implicit (the transaction rolls back). ~~Phase 21 should add
+  the missing InventoryTransaction row-writing~~ — **correction:** direct
+  re-verification of `src/orders/checkout.service.ts` during Phase 21
+  found it already writes a `RESERVATION`-type `InventoryTransaction` row
+  per line item (since Phase 13/18) — this document's prior claim that it
+  didn't was stale, not a real gap; no change was needed or made to
+  `CheckoutService`.
 - **Concurrency:** every write must follow the same single
   conditional-`UPDATE` pattern already proven in `CheckoutService` — never
   SELECT-then-UPDATE (`catalog.md` §47's explicit warning, already
@@ -1219,17 +1287,26 @@ for vendors). See Section 22 and this phase's final report.
 `GET /categories` already existed (Phase 11, flat array response) and was
 deliberately left unchanged — see the P1.4/Phase 20 update notes above.
 
-**Phase 21 — Variant + Inventory**
+**Phase 21 — Variant + Inventory — IMPLEMENTED (2026-08-22), narrowed**
 
 | Method | Path | Auth | Authz | DTO | Response | Ownership | Swagger | E2E |
 |---|---|---|---|---|---|---|---|---|
-| POST | /products/:productId/variants | JWT | owner | `CreateVariantDto` | ProductVariant | via parent Product | required | required |
-| GET | /products/:productId/variants | public/owner-mixed | — | — | ProductVariant[] | ACTIVE-only for public | required | required |
-| GET | /products/:productId/variants/:variantId | mixed | owner for non-ACTIVE | — | ProductVariant | via parent Product | required | required |
-| PATCH | /products/:productId/variants/:variantId | JWT | owner | `UpdateVariantDto` | ProductVariant | via parent Product | required | required |
-| GET | /products/:productId/variants/:variantId/inventory | JWT | owner | — | Inventory (computed `available`) | via variant→product | required | required |
-| POST | .../inventory/restock | JWT | owner | `RestockDto {quantity, note?}` | Inventory | via variant→product | required | required |
-| POST | .../inventory/adjust | JWT | owner + ADMIN bypass (ADR-4) | `AdjustInventoryDto {delta, note}` | Inventory | via variant→product | required | required |
+| POST | /products/:productId/variants | JWT | owner | `CreateVariantDto` | ProductVariant | `ProductOwnershipGuard` (reused) | ✅ done | ✅ done |
+| GET | /products/:productId/variants | JWT | owner (management view, all statuses) | — | ProductVariant[] | `ProductOwnershipGuard` (reused) | ✅ done | ✅ done |
+| GET | /products/:productId/variants/:variantId | JWT | owner | — | ProductVariant | `ProductOwnershipGuard` (reused) | ✅ done | ✅ done |
+| PATCH | /products/:productId/variants/:variantId | JWT | owner | `UpdateVariantDto` | ProductVariant | `ProductOwnershipGuard` (reused) | ✅ done | ✅ done |
+| GET | /products/:productId/variants/:variantId/inventory | JWT | owner | — | Inventory (computed `available`) | `ProductOwnershipGuard` (reused) | ✅ done | ✅ done |
+| POST | .../inventory/restock | JWT | owner | `RestockInventoryDto {quantity, note?}` | Inventory | `ProductOwnershipGuard` (reused) | ✅ done | ✅ done |
+| POST | .../inventory/adjust | JWT | owner + ADMIN bypass (ADR-4) | `AdjustInventoryDto {delta, note?}` | Inventory | `ProductOwnershipGuard` (reused) | ✅ done | ✅ done |
+
+The originally-sketched "public/owner-mixed" shape for the list/detail
+routes was **not** built — on stricter review, no source document
+actually requires a public variant-browsing capability (unlike Product's
+own `GET /products/slug/:slug`, which Phase 11 explicitly documents). All
+seven routes above are vendor-management-only. `ProductOwnershipGuard`
+is reused with **zero modification** — every route is nested under
+`/products/:productId/...`, so the guard's existing `:productId`-param
+resolution applies unchanged.
 
 **Phase 22 — Product Images**
 
@@ -1446,7 +1523,8 @@ match, not introduce a new testing pattern):
 2026-08-22 — Vendor verification/activation added following Phase 17;
 concurrency proof added following Phase 18; vendor-initiated order
 fulfillment lifecycle added following Phase 19; paginated public product
-list added following Phase 20.)
+list added following Phase 20; ProductVariant + Inventory foundation
+added following Phase 21.)
 
 - JWT authentication with refresh-token rotation and reuse detection.
 - RBAC with live database re-evaluation.
@@ -1471,16 +1549,30 @@ list added following Phase 20.)
 - A paginated, public product catalog browse endpoint (Phase 20) —
   `GET /api/products` returns `ACTIVE`, non-deleted products only, in the
   documented `{data, meta}` envelope.
+- A vendor-owned ProductVariant + Inventory management API (Phase 21) —
+  a product can now be taken from creation through a purchasable variant
+  with real stock, entirely through the documented API (no more manual
+  DB seeding required). SKU uniqueness, price/currency validation, atomic
+  restock/adjust with a full `InventoryTransaction` audit trail, and
+  negative-stock/reserved-stock protection are all real and tested.
+  **Claim precisely this** — not "full variant management" (see DO NOT
+  CLAIM YET: no default-variant reassignment, no public variant
+  browsing).
 - Two-layer webhook idempotency.
-- 373 unit + 262 e2e tests, including adversarial and concurrency
+- 407 unit + 295 e2e tests, including adversarial and concurrency
   scenarios.
 - Verified Docker build + CI pipeline against real Postgres/Redis.
 
 ## DO NOT CLAIM YET
 
-- Full inventory management — becomes safe after Phase 21.
-- Complete/purchasable product catalog with variants — becomes safe after
-  Phase 21.
+- "Full inventory management" — Phase 21 covers view/restock/adjust only;
+  no multi-location/warehouse inventory, no batch/lot/serial tracking
+  (explicit future scope per `catalog.md` §59).
+- "Full variant management" or "product configurator" — no default-
+  variant reassignment exists (a product's default is permanently its
+  first-created variant); no attribute/option validation scheme exists
+  (arbitrary JSON is accepted, by design, not oversight); no public
+  variant-browsing endpoint exists.
 - Product image upload — becomes safe after Phase 22.
 - "Full order management" or "customer order cancellation" — Phase 19
   implemented only the vendor-initiated subset ADR-2 approved; customer-
@@ -1584,8 +1676,8 @@ phase sequence.
 ## Architecture
 - [x] Current architecture reconstructed and verified (Section 2)
 - [x] Remaining architecture planned (this document)
-- [ ] Phase 17-26 execution (Phases 17-20 complete as of 2026-08-22; Phases
-      21-26 not started)
+- [ ] Phase 17-26 execution (Phases 17-21 complete as of 2026-08-22; Phases
+      22-26 not started)
 
 ## Backend
 - [x] Vendor verification/activation (Phase 17) — completed 2026-08-22
@@ -1596,14 +1688,18 @@ phase sequence.
 - [x] Product list endpoint (Phase 20) — completed 2026-08-22
 - [x] Category list pagination — resolved as NOT applicable (Phase 20);
       existing flat-array endpoint intentionally kept unchanged
-- [ ] ProductVariant CRUD (Phase 21)
+- [x] ProductVariant CRUD (Phase 21) — completed 2026-08-22; vendor-owned
+      only, no public route; `isDefault` reassignment not implemented
+      (see Section 22)
 - [ ] Product Image upload/streaming (Phase 22)
 
 ## Inventory
-- [ ] Standalone view endpoint (Phase 21)
-- [ ] Restock endpoint (Phase 21)
-- [ ] Adjustment endpoint (Phase 21)
-- [ ] InventoryTransaction writes on checkout reservation (Phase 21)
+- [x] Standalone view endpoint (Phase 21) — completed 2026-08-22
+- [x] Restock endpoint (Phase 21) — completed 2026-08-22
+- [x] Adjustment endpoint (Phase 21) — completed 2026-08-22
+- [x] InventoryTransaction writes on checkout reservation (Phase 21) —
+      confirmed already correct (Phase 13/18); no change needed, this
+      document's prior claim otherwise was stale
 
 ## Orders
 - [x] Vendor-order status transition endpoint (Phase 19) — completed
@@ -1625,7 +1721,8 @@ phase sequence.
 - [ ] Product Image API (Phase 22)
 
 ## Security
-- [ ] Ownership chain extended through Variant (Phase 21)
+- [x] Ownership chain extended through Variant (Phase 21) — completed
+      2026-08-22, via unchanged reuse of `ProductOwnershipGuard`
 - [ ] Ownership chain extended through Product Image (Phase 22)
 - [ ] Upload security controls (Phase 22)
 - [ ] Global exception filter (Phase 23)
@@ -1639,7 +1736,9 @@ phase sequence.
       15 e2e, including a concurrency sub-test)
 - [x] List endpoint tests (Phase 20) — completed 2026-08-22 (8 unit + 8
       e2e)
-- [ ] Variant/Inventory tests incl. concurrency (Phase 21)
+- [x] Variant/Inventory tests incl. concurrency (Phase 21) — completed
+      2026-08-22 (34 unit + 24 e2e, including a concurrent-adjustment
+      race test)
 - [ ] Upload security tests (Phase 22)
 
 ## Swagger
@@ -1751,12 +1850,18 @@ document, not a business decision:**
 |---|---|---|
 | Customer-vs-vendor-initiated split for `VendorOrder: PENDING/CONFIRMED → CANCELLED` | Re-reading `docs/database/order.md` §48 directly (rather than relying on ADR-2's own paraphrase of it) found **no textual basis** for a customer mutation capability — §48 lists only viewing rights for customers ("View their own MasterOrders... VendorOrders... OrderItems") and "Update fulfillment-related state" only for vendors. Vendor-initiated only; no customer-facing cancellation endpoint was built. This is a correction of ADR-2's own implementation-constraints note, which had speculated a customer path might exist — the correction is recorded here rather than silently overriding the ADR text. | `src/orders/vendor-orders.service.ts` class doc-comment, `docs/database/order.md` §31's update note |
 
+**Sidestepped by Phase 21 (2026-08-22) — the underlying question remains
+open, but implementation no longer depends on answering it:**
+
+| Formerly-open item | What Phase 21 did instead | Still open |
+|---|---|---|
+| `SIMPLE` product default-variant enforcement mechanism (DB partial-unique-index vs. app-transaction check) | A product's *first* variant is deterministically made its default (server-computed, `isDefault` never client-settable on create or update); no mechanism exists anywhere to change which variant is default afterward. This satisfies both halves of the invariant ("must have a default," "at most one") without ever needing to answer the reassignment-mechanism question. | **Reassigning** an existing product's default variant to a different, later-created one remains genuinely undefined and unimplemented — flagged, not built. |
+
 **Still genuinely open — unaffected by the four approved decisions:**
 
 | Decision | Domain | Why Needed | Current Evidence | Proposed Owner | Blocks |
 |---|---|---|---|---|---|
-| `SIMPLE` product default-variant enforcement mechanism (DB partial-unique-index vs. app-transaction check) | Catalog | Determines Phase 21's schema-adjacent implementation approach | `catalog.md` §20/§22: invariant stated, mechanism not specified; not covered by ADR-4 (which addresses authorization, not this invariant) | Project owner | Phase 21 (specifically the default-variant guarantee — variant CRUD itself is not blocked) |
-| Exact point a `SALE`-type `InventoryTransaction` is recorded | Catalog/Order | Determines whether Phase 21 or a later phase writes this transaction type | `catalog.md` §39: "will be defined by the Order and Payment lifecycle" — order lifecycle is only partially resolved by ADR-2/3 | Project owner | Any phase implementing `SALE` transactions specifically (not blocking Phase 21's core Variant/Inventory CRUD) |
+| Exact point a `SALE`-type `InventoryTransaction` is recorded | Catalog/Order | Determines which future phase writes this transaction type | `catalog.md` §39: "will be defined by the Order and Payment lifecycle" — order lifecycle is only partially resolved by ADR-2/3, and Phase 21 confirmed `CheckoutService` still only ever writes `RESERVATION`, never `SALE` | Project owner | Any phase implementing `SALE` transactions specifically |
 | Commission rate/type (percentage value, who sets it, per-vendor override) | Wallet/Commission | Determines whether any Wallet/Commission work can start at all | `wallet-commission.md` — no concrete rate specified anywhere | Project owner | All Wallet/Commission work (entire domain remains FUTURE until resolved) |
 | Promotion/Coupon stacking and validation order | Promotion | Determines whether Promotion work can start | `promotion.md` — business rules not fully specified | Project owner | All Promotion/Coupon work (entire domain remains FUTURE) |
 | Review moderation policy (auto-publish vs. admin-approval) | Review | Determines whether Review work can start | `review.md` — not specified | Project owner | All Review work (entire domain remains FUTURE) |

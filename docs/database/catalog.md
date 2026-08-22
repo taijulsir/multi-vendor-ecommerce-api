@@ -1787,10 +1787,10 @@ Vendor isolation                  APPROVED
 
 Prisma models                     IMPLEMENTED
 Database migration                 CREATED
-API implementation                 PARTIALLY IMPLEMENTED (Phases 11, 20)
+API implementation                 PARTIALLY IMPLEMENTED (Phases 11, 20, 21)
 Redis integration                  NOT IMPLEMENTED
-BullMQ integration                 NOT IMPLEMENTED
-Tests                              IMPLEMENTED (Phases 11, 20, for what exists)
+BullMQ integration                  NOT IMPLEMENTED
+Tests                              IMPLEMENTED (Phases 11, 20, 21, for what exists)
 ```
 
 > Phase 11 implemented Category management (`GET /api/categories`,
@@ -1818,6 +1818,36 @@ Tests                              IMPLEMENTED (Phases 11, 20, for what exists)
 > Phase 11 tests, and changing it would be a breaking change to already-
 > shipped behavior — out of this narrowly-scoped phase. See this phase's
 > final report for the full reasoning.
+
+> Phase 21 implemented the ProductVariant + Inventory application layer
+> (`POST/GET /api/products/:productId/variants`,
+> `GET/PATCH /api/products/:productId/variants/:variantId`,
+> `GET /api/products/:productId/variants/:variantId/inventory`,
+> `POST .../inventory/restock`, `POST .../inventory/adjust`) — all
+> vendor-owned via the existing `ProductOwnershipGuard` reused unchanged
+> against the `:productId` route param, ADMIN bypass preserved. SKU
+> uniqueness (§11-12) is enforced via the existing DB-level `@unique`
+> constraint, translated to 409. `available` (§32) is always computed
+> (`onHand - reserved`), never stored. `RESTOCK`/`ADJUSTMENT`
+> `InventoryTransaction` rows are written for every mutation, both inside
+> the same atomic transaction as the corresponding `Inventory` write; the
+> `ADJUSTMENT` path specifically reuses `CheckoutService`'s exact atomic-
+> conditional-`UPDATE` pattern (never SELECT-then-UPDATE, per §47) to
+> enforce `onHand >= 0` and `reserved <= onHand` as a clean 409 before the
+> DB-level `CHECK` constraints would otherwise surface it as a 500.
+> **`isDefault` is never client-settable, at creation or update** — §20's
+> exact enforcement mechanism for "at most one default variant" was left
+> genuinely undefined by the source documents (DB partial-unique-index
+> vs. application-transaction check), so rather than inventing one, this
+> phase sidesteps the question: a product's first variant is
+> deterministically its default, forever, with no reassignment mechanism
+> built. **No public variant-browsing endpoint exists** — every route
+> here is vendor-management-only; the existing `GET /api/products/slug/
+> :slug`/`GET /api/products` public responses are completely unchanged.
+> `ProductImage`, product attribute-definition validation, and the exact
+> point a `SALE`-type `InventoryTransaction` is recorded all remain out
+> of this phase's scope. See this phase's final report for the full
+> reasoning behind each of these boundaries.
 
 This document represents the approved Catalog architecture for the
 initial production-grade multi-vendor e-commerce implementation.

@@ -1069,13 +1069,15 @@ but have no controllers yet — ownership checks for them will be added
 alongside those controllers, not speculatively ahead of them.
 
 `ProductVariant`/`Inventory` are a specific case of this: the ownership
-chain `User → Vendor → Product → ProductVariant → Inventory` has been
-explicitly approved (Architecture Decision Register, ADR-4, in
-`docs/remaining-architecture-plan.md`) as an extension of the same
-`OwnershipService` pattern one hop further through `ProductVariant`, with
-inventory adjustment being vendor-self-service rather than ADMIN-only.
-Neither `ProductVariant` nor `Inventory` has a controller yet — this
-paragraph records the *approved design*, not current behavior.
+chain `User → Vendor → Product → ProductVariant → Inventory` (ADR-4,
+`docs/remaining-architecture-plan.md`) is **implemented (Phase 21)** —
+not as a new guard, but by nesting every `ProductVariant`/`Inventory`
+route under `/products/:productId/...` and reusing `ProductOwnershipGuard`
+completely unchanged, since it already resolves ownership from any
+`:productId` route param regardless of what follows it. Inventory
+adjustment is vendor-self-service, not ADMIN-only, exactly as ADR-4
+specifies; the ADMIN bypass is the same one `ProductOwnershipGuard`
+already provides.
 
 `Category` (Phase 11, `docs/database/catalog.md` §2) is explicitly
 **not** vendor-owned — it has no `vendorId`/`userId` column at all, and
@@ -1693,11 +1695,14 @@ inside this architectural reference. Status as of this note:
   `VendorOrder`s, never client-settable (ADR-3) — a direct application of
   §7's existing requirement; see `src/orders/utils/master-order-status.ts`
   for the exact derivation formula.
-* **Not yet implemented (planned for Phase 21):** inventory
-  ownership/authorization extending the existing `User → Vendor →
-  Product` ownership chain one hop further through `ProductVariant →
-  Inventory`, with adjustment being vendor-self-service plus the existing
-  ADMIN-bypass convention (ADR-4) — see §23's updated note above.
+* **Implemented (Phase 21):** inventory ownership/authorization extending
+  the existing `User → Vendor → Product` ownership chain one hop further
+  through `ProductVariant → Inventory`, with adjustment being vendor-
+  self-service plus the existing ADMIN-bypass convention (ADR-4) — see
+  §23's updated note above. The default-variant enforcement *mechanism*
+  ADR-4 did not cover remains genuinely unresolved and was not invented;
+  see `docs/database/catalog.md` §60 and `docs/remaining-architecture-plan.md`
+  Section 22.
 
 None of these decisions change this document's existing architectural
 principles (§18-26) — they are applications of those principles to
