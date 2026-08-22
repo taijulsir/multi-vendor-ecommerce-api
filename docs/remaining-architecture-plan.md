@@ -1040,21 +1040,65 @@ dependency analysis.
 > unit / 327 e2e) green. `npx prisma validate`/`migrate status` clean
 > with zero schema changes.
 
-## Phase 25 — Documentation / Postman Refresh
+## Phase 25 — M-1 Fix + Documentation / Postman Refresh
 
 - **Objective:** bring README, `docs/API.md`, `docs/database/*.md`, and
   the Postman collection/environment up to date with everything Phases
-  17-24 added.
-- **In scope:** exactly what Section 12/13 specify.
+  17-24 added. **Extended scope (as actually executed):** first fix
+  `docs/final-system-audit.md`'s M-1 finding (a refund-settlement
+  concurrency bug), then proceed with the documentation/Postman work.
+- **In scope:** exactly what Section 12/13 specify, plus the M-1 fix.
 - **Out of scope:** any content change unrelated to Phases 17-24's actual
-  output.
+  output; any new business domain; any API contract change.
 - **Dependencies:** must run after Phases 17-22 (the phases that add API
   surface); can run once at the end rather than per-phase, at this
   project's discretion.
 - **Completion criteria:** every new endpoint from Phases 17-22 appears in
   Swagger (automatic, no action needed), `docs/API.md`, README, and the
-  Postman collection with working auto-capture where applicable.
+  Postman collection with working auto-capture where applicable. M-1 is
+  fixed and proven under genuine concurrent load.
 - **Risk/ambiguity:** none.
+
+> **STATUS: M-1 FIX IMPLEMENTED (2026-08-22).** `WebhooksService
+> .handleRefundOutcome` rewritten to use the same atomic-conditional-
+> `UPDATE` pattern already established by `checkout.service.ts`
+> (inventory reservation) and `vendor-orders.service.ts` (status
+> transition), instead of a read-then-absolute-set — closing the lost-
+> update race `docs/final-system-audit.md`'s M-1 finding described. Full
+> root-cause/fix/proof record lives in that document's new **Section
+> 24a** (not duplicated here, to avoid two sources of truth for the same
+> resolution). No Prisma schema change was made or required. 2 unit
+> tests updated/added (`webhooks.service.spec.ts`) + 2 new concurrency
+> e2e tests (`payments.e2e-spec.ts`, real Postgres, real webhook
+> endpoint, `Promise.all` — no artificial sleep), all passing; full
+> suite (486 unit / 329 e2e) green across repeated runs. One narrower,
+> out-of-scope-for-M-1 concurrency observation was found while fixing it
+> (refund-*creation*-time balance validation, `PaymentsService
+> .createRefund`) and intentionally left unfixed — tracked as L-3 in the
+> audit document, not invented as a new business rule.
+>
+> **Documentation/Postman refresh: IMPLEMENTED (2026-08-22).** Swagger
+> audited against a live `/api/docs-json` capture — confirmed all 54
+> routes (49 business + 5 RBAC-demo) Swagger-decorated and accurate; one
+> genuine inaccuracy fixed (the mixed-auth image-streaming route's
+> `@ApiBearerAuth()` implied a token was always required — added
+> `@ApiSecurity({})` alongside it so the generated OpenAPI security
+> requirement correctly allows either bearer auth or none, matching its
+> actual optional-auth behavior; no route behavior changed). Postman
+> collection expanded from 12 to 17 folders / 37 to 56 requests — added
+> RBAC Demo, Product Variants, Inventory, Product Images, and a
+> dedicated Refunds folder (split out of Payments); extended Vendors
+> (verification/activation), Products (public list), and Vendor Orders
+> (status update) with their Phase 17/19/20 endpoints. Postman
+> environment gained `imageId` and un-staled `variantId`'s description
+> (auto-captured now, not manual). `docs/API.md` rewritten to cover the
+> full current API surface (previously missing Phases 17, 19-22
+> entirely). README received only the minimal, directly-justified fixes
+> tied to what changed this phase — the Postman collection paragraph
+> (request/folder counts) and the "Known Limitations" bullets that
+> directly contradicted the now-implemented Variant/Inventory/Image/
+> order-status APIs — no portfolio/resume language, no full rewrite
+> (deferred to Phase 26 as instructed).
 
 ## Phase 26 — Final Portfolio / Resume Audit
 
@@ -1916,8 +1960,8 @@ phase sequence.
 ## Architecture
 - [x] Current architecture reconstructed and verified (Section 2)
 - [x] Remaining architecture planned (this document)
-- [ ] Phase 17-26 execution (Phases 17-24 complete as of 2026-08-22; Phases
-      25-26 not started)
+- [ ] Phase 17-26 execution (Phases 17-25 complete as of 2026-08-22; Phase
+      26 not started)
 
 ## Backend
 - [x] Vendor verification/activation (Phase 17) — completed 2026-08-22
@@ -2015,13 +2059,24 @@ phase sequence.
 - [x] Auto-covered by each phase's endpoint additions (no separate task) —
       Phase 23 added no new endpoints, so no Swagger change was needed or
       made
+- [x] Full Swagger audit (Phase 25) — completed 2026-08-22, all 54 routes
+      verified accurate against a live `/api/docs-json` capture; one
+      genuine fix (optional-auth marker on the image-streaming route),
+      no behavior change
 
 ## Postman
-- [ ] Vendor verification requests (Phase 25)
-- [ ] Order lifecycle requests (Phase 25)
-- [ ] List endpoint requests (Phase 25)
-- [ ] Variant/Inventory folder(s) (Phase 25)
-- [ ] Product Image folder, multipart support (Phase 25)
+- [x] Vendor verification requests (Phase 25) — completed 2026-08-22
+- [x] Order lifecycle requests (Phase 25) — completed 2026-08-22,
+      VendorOrder status update added to `14 Vendor Orders`
+- [x] List endpoint requests (Phase 25) — completed 2026-08-22, public
+      paginated product list added to `07 Products`
+- [x] Variant/Inventory folder(s) (Phase 25) — completed 2026-08-22,
+      `08 Product Variants` + `09 Inventory`
+- [x] Product Image folder, multipart support (Phase 25) — completed
+      2026-08-22, `10 Product Images` (multipart upload, stream, delete)
+- [x] RBAC Demo folder + dedicated Refunds folder (Phase 25) — completed
+      2026-08-22, not originally planned but added since both are real,
+      live parts of the API surface (12 -> 17 folders, 37 -> 56 requests)
 
 ## Documentation
 - [x] `docs/database/vendor-shop.md` §22 update (post-Phase 17) —
@@ -2036,8 +2091,13 @@ phase sequence.
 - [x] `docs/architecture.md` §12/§37/§39 update (post-Phase 24) —
       completed 2026-08-22, env validation + TypeScript/ESLint strictness
       + Docker hardening audit summary
-- [ ] `docs/API.md` refresh (Phase 25)
-- [ ] README refresh (Phase 25)
+- [x] `docs/API.md` refresh (Phase 25) — completed 2026-08-22, full
+      rewrite covering Phases 17/19-22's additions (previously missing
+      entirely)
+- [x] README refresh (Phase 25) — completed 2026-08-22, minimal justified
+      fixes only (Postman paragraph, Known Limitations bullets directly
+      contradicted by this phase's own Postman/API.md work) — no
+      portfolio/resume rewrite, deferred to Phase 26 as instructed
 - [x] `.env.example` update for `FILE_STORAGE_DIR` (Phase 22) — completed
       2026-08-22
 - [x] `.env.example` JWT secret strength note (Phase 24) — completed

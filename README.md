@@ -181,12 +181,12 @@ A narrative walkthrough of every flow (auth, cart, checkout, orders, payments/re
 
 ## Postman Collection
 
-A ready-to-import collection and environment reflecting the real, current API (37 requests across the 12 implemented domains, in call order) are in [`postman/`](postman/):
+A ready-to-import collection and environment reflecting the real, current API (56 requests across 17 folders, in call order — Auth, RBAC demo, Vendors, Shops, Categories, Products, Product Variants, Inventory, Product Images, Cart, Checkout, Orders, Vendor Orders, Payments, Webhooks, Refunds, plus Health) are in [`postman/`](postman/):
 
 - `postman/multi-vendor-ecommerce-api.postman_collection.json`
 - `postman/multi-vendor-ecommerce-api.postman_environment.json`
 
-Login/register/checkout/create-payment/create-refund requests include test scripts that automatically capture `accessToken`, `refreshToken`, and the relevant resource id into the environment. Two variables must be set **manually**, since no endpoint exists to obtain them: `variantId` (no `ProductVariant` creation API — create one via `prisma/seed.ts` or Prisma Studio) and `adminAccessToken` (no self-service admin-provisioning endpoint — assign the `ADMIN` role directly via Prisma, then log in as that user). See the collection's own description for details.
+Login/register/create-variant/upload-image/checkout/create-payment/create-refund requests (and more) include test scripts that automatically capture `accessToken`, `refreshToken`, and the relevant resource id into the environment. One variable must still be set **manually**, since no endpoint exists to obtain it: `adminAccessToken` (no self-service admin-provisioning endpoint — assign the `ADMIN` role directly via Prisma, then log in as that user). Permission-gated RBAC-demo requests additionally need manually-seeded `Permission`/`RolePermission` rows — see the collection's own description for details.
 
 ---
 
@@ -362,11 +362,11 @@ docker run -p 3000:3000 --env-file .env multi-vendor-ecommerce-api   # point DAT
 
 ## Known Limitations
 
-- No real payment gateway integration (Stripe/SSLCommerz/bKash/...) — foundation only.
-- `ProductVariant`/`ProductImage`/`Inventory` have no management API — variants must be seeded directly.
+- No real payment gateway integration (Stripe/SSLCommerz/bKash/...) — foundation only; no webhook signature verification (provider-specific, no provider chosen).
+- `ProductVariant`/`Inventory`/`ProductImage` management APIs exist (vendor-owned, ownership-enforced) — but no default-variant reassignment and no image reordering/single-primary-image enforcement.
 - Wallet/Commission, Promotion/Coupon, Review, Notification, and Audit have Prisma models and full architecture docs, but **no application layer** — not implemented, not stubbed, not faked.
-- No order fulfillment status-transition or cancellation workflow.
-- No CI pipeline was present before this pass — see `.github/workflows/` for what now exists.
+- Vendor-initiated order fulfillment status transitions exist (`PATCH /api/vendor-orders/:id/status`); no customer-facing cancellation, post-`PROCESSING` cancellation, or returns workflow.
+- No rate limiting, structured logging framework, or secrets-management integration.
 
 ## Future Scope
 

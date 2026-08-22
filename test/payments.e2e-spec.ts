@@ -771,5 +771,141 @@ describe('Payments API (e2e)', () => {
         .send({ amount: '200.00', reason: 'CUSTOMER_RETURN' })
         .expect(409);
     });
+
+    // ---------------------------------------------------------------
+    // Concurrency proof (Phase 25 — M-1 fix,
+    // docs/final-system-audit.md). Real PostgreSQL, real application
+    // services, the real webhook endpoint — `Promise.all` fires two
+    // genuinely simultaneous requests, the same technique already
+    // established for concurrent checkout (Phase 18) and concurrent
+    // inventory adjustment (Phase 21); no artificial sleep is used to
+    // manufacture the race.
+    // ---------------------------------------------------------------
+    describe('Concurrency (Phase 25 — M-1 fix)', () => {
+      it('accumulates two concurrent refund.succeeded settlements for the same Payment correctly — neither contribution is lost', async () => {
+        const { customer, order, paymentId } = await paidPaymentFixture(
+          'RefundConcurrencyUser',
+        );
+        const admin = await createAdmin('RefundConcurrencyAdmin');
+        const total = Number(order.totalAmount);
+
+        // Two independent, already-admin-approved refunds against the
+        // same payment (30% and 20% of the total — both individually
+        // well within the refundable balance, summing to 50%). Created
+        // sequentially (refund *creation* is not what M-1 is about —
+        // see this phase's final report for why that is a separate,
+        // out-of-scope observation); it is their *settlement* that must
+        // race.
+        const amountA = (total * 0.3).toFixed(2);
+        const amountB = (total * 0.2).toFixed(2);
+
+        const refundA = await request(app.getHttpServer())
+          .post(`/api/payments/${paymentId}/refunds`)
+          .set('Authorization', `Bearer ${admin.accessToken}`)
+          .send({ amount: amountA, reason: 'CUSTOMER_RETURN' })
+          .expect(201);
+
+        const refundB = await request(app.getHttpServer())
+          .post(`/api/payments/${paymentId}/refunds`)
+          .set('Authorization', `Bearer ${admin.accessToken}`)
+          .send({ amount: amountB, reason: 'CUSTOMER_RETURN' })
+          .expect(201);
+
+        // The actual race M-1 describes: both refunds' webhook
+        // settlements arrive at genuinely the same time.
+        const [responseA, responseB] = await Promise.all([
+          request(app.getHttpServer()).post('/api/payments/webhook').send({
+            provider: 'MANUAL',
+            eventId: uniqueEventId(),
+            eventType: 'refund.succeeded',
+            providerReference: refundA.body.providerReference,
+          }),
+          request(app.getHttpServer()).post('/api/payments/webhook').send({
+            provider: 'MANUAL',
+            eventId: uniqueEventId(),
+            eventType: 'refund.succeeded',
+            providerReference: refundB.body.providerReference,
+          }),
+        ]);
+
+        expect(responseA.status).toBe(200);
+        expect(responseB.status).toBe(200);
+        expect(responseA.body).toEqual({ status: 'processed' });
+        expect(responseB.body).toEqual({ status: 'processed' });
+
+        const payment = await request(app.getHttpServer())
+          .get(`/api/payments/${paymentId}`)
+          .set('Authorization', `Bearer ${customer.accessToken}`)
+          .expect(200);
+
+        const expectedRefunded = (Number(amountA) + Number(amountB)).toFixed(2);
+        // The core M-1 proof: both concurrent contributions are
+        // reflected in the final cumulative amount — neither commit
+        // overwrote the other the way the pre-fix read-then-absolute-
+        // set implementation would have allowed.
+        expect(payment.body.refundedAmount).toBe(expectedRefunded);
+        expect(payment.body.status).toBe('PARTIALLY_REFUNDED');
+
+        const refundAResult = payment.body.refunds.find(
+          (r: { id: string }) => r.id === refundA.body.id,
+        );
+        const refundBResult = payment.body.refunds.find(
+          (r: { id: string }) => r.id === refundB.body.id,
+        );
+        expect(refundAResult.status).toBe('SUCCEEDED');
+        expect(refundBResult.status).toBe('SUCCEEDED');
+
+        const masterOrder = await request(app.getHttpServer())
+          .get(`/api/orders/${order.id}`)
+          .set('Authorization', `Bearer ${customer.accessToken}`)
+          .expect(200);
+        expect(masterOrder.body.paymentStatus).toBe('PARTIALLY_REFUNDED');
+      });
+
+      it('two concurrent webhook deliveries reporting the SAME refund (different eventIds, e.g. a non-conforming gateway retry) apply the financial effect exactly once', async () => {
+        const { customer, paymentId } = await paidPaymentFixture(
+          'RefundReplayRaceUser',
+        );
+        const admin = await createAdmin('RefundReplayRaceAdmin');
+
+        const refund = await request(app.getHttpServer())
+          .post(`/api/payments/${paymentId}/refunds`)
+          .set('Authorization', `Bearer ${admin.accessToken}`)
+          .send({ amount: '500.00', reason: 'CUSTOMER_RETURN' })
+          .expect(201);
+
+        const [responseA, responseB] = await Promise.all([
+          request(app.getHttpServer()).post('/api/payments/webhook').send({
+            provider: 'MANUAL',
+            eventId: uniqueEventId(),
+            eventType: 'refund.succeeded',
+            providerReference: refund.body.providerReference,
+          }),
+          request(app.getHttpServer()).post('/api/payments/webhook').send({
+            provider: 'MANUAL',
+            eventId: uniqueEventId(),
+            eventType: 'refund.succeeded',
+            providerReference: refund.body.providerReference,
+          }),
+        ]);
+
+        // Exactly one of the two concurrent deliveries actually applies
+        // the financial effect via the atomic conditional `updateMany`
+        // (the other affects 0 rows and is reported as a duplicate) —
+        // proving the Phase 16 value-based idempotency layer holds
+        // under genuine concurrency, not just sequential replay.
+        const statuses = [responseA.body.status, responseB.body.status].sort();
+        expect(statuses).toEqual(['duplicate', 'processed']);
+
+        const payment = await request(app.getHttpServer())
+          .get(`/api/payments/${paymentId}`)
+          .set('Authorization', `Bearer ${customer.accessToken}`)
+          .expect(200);
+
+        // The financial effect was applied exactly once, not twice.
+        expect(payment.body.refundedAmount).toBe('500.00');
+        expect(payment.body.status).toBe('PARTIALLY_REFUNDED');
+      });
+    });
   });
 });

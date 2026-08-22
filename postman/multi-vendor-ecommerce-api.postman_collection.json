@@ -2,14 +2,25 @@
   "info": {
     "_postman_id": "3f0d9b1a-6e2a-4a2b-9b1a-6e2a4a2b9b1a",
     "name": "Multi-Vendor E-Commerce API",
-    "description": "Real, implemented endpoints only (Phases 1-16). No Wallet/Commission, Promotion/Coupon, Review, Notification, or Audit endpoints exist yet - their Prisma models exist but have no application layer. No ProductVariant/Inventory management endpoint exists either, so `variantId` must be set manually (e.g. via prisma/seed.ts or Prisma Studio) before running Cart requests. ADMIN-only requests (Category create/update, Refund create) require `adminAccessToken` to be set manually, since no self-service admin-provisioning endpoint exists - assign the ADMIN role to a seeded user directly via Prisma.",
+    "description": "Real, implemented endpoints only (Phases 1-25). No Wallet/Commission, Promotion/Coupon, Review, Notification, or Audit endpoints exist yet -- their Prisma models exist but have no application layer. No real payment gateway is integrated (foundation only, no signature verification). ADMIN-only requests (Category create/update, Vendor verification/activation, Refund create) require adminAccessToken to be set manually, since no self-service admin-provisioning endpoint exists -- assign the ADMIN role to a seeded user directly via Prisma. RBAC demo permission-based requests similarly require manually-seeded Permission/RolePermission rows. IMPORTANT: Cart 'Add item to cart' requires the variant's parent Product, Vendor, AND the variant itself to all be ACTIVE -- a freshly-applied Vendor is PENDING by default, so run 04 Vendors > Update vendor verification status (twice: UNDER_REVIEW then VERIFIED) and Activate vendor BEFORE 11 Cart, or 'Add item to cart' returns 400. Suggested execution order: Auth -> Vendors (apply, then ADMIN verifies + activates) -> Shops -> Categories (ADMIN) -> Products (create, then update status to ACTIVE) -> Product Variants -> Inventory (restock) -> Product Images -> Cart -> Checkout -> Orders / Vendor Orders -> Payments -> Webhooks -> Refunds.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
     "type": "bearer",
-    "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
   },
-  "variable": [{ "key": "baseUrl", "value": "{{baseUrl}}" }],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "{{baseUrl}}"
+    }
+  ],
   "item": [
     {
       "name": "01 Health",
@@ -18,9 +29,15 @@
           "name": "Health check",
           "request": {
             "method": "GET",
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/health", "host": ["{{baseUrl}}"], "path": ["api", "health"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "health"]
+            }
           }
         }
       ]
@@ -32,14 +49,29 @@
           "name": "Register",
           "request": {
             "method": "POST",
-            "auth": { "type": "noauth" },
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"jane.doe+{{$randomInt}}@example.com\",\n  \"password\": \"StrongPassw0rd!\",\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Doe\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
-            "url": { "raw": "{{baseUrl}}/api/auth/register", "host": ["{{baseUrl}}"], "path": ["api", "auth", "register"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "register"]
+            }
           }
         },
         {
@@ -62,14 +94,29 @@
           ],
           "request": {
             "method": "POST",
-            "auth": { "type": "noauth" },
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"jane.doe@example.com\",\n  \"password\": \"StrongPassw0rd!\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
-            "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "auth", "login"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
           }
         },
         {
@@ -91,14 +138,29 @@
           ],
           "request": {
             "method": "POST",
-            "auth": { "type": "noauth" },
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
-            "url": { "raw": "{{baseUrl}}/api/auth/refresh", "host": ["{{baseUrl}}"], "path": ["api", "auth", "refresh"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/refresh",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "refresh"]
+            }
           }
         },
         {
@@ -106,26 +168,132 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/auth/me", "host": ["{{baseUrl}}"], "path": ["api", "auth", "me"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "me"]
+            }
           }
         },
         {
           "name": "Logout",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
-            "url": { "raw": "{{baseUrl}}/api/auth/logout", "host": ["{{baseUrl}}"], "path": ["api", "auth", "logout"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "logout"]
+            }
           }
         }
       ]
     },
     {
-      "name": "03 Vendors",
+      "name": "03 RBAC / Authorization Demo",
+      "description": "Demonstration-only endpoints exercising AuthorizationGuard end to end (not real business endpoints). Role-based requests below work with any seeded ADMIN/VENDOR account. Permission-based requests (products:read, inventory:adjust) require Permission/RolePermission rows that are NOT seeded by prisma/seed.ts by design (see docs/database/identity-access.md) -- create them manually via Prisma Studio/direct DB access first, or expect 403.",
+      "item": [
+        {
+          "name": "Requires ADMIN role",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/rbac-demo/role",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "rbac-demo", "role"]
+            }
+          }
+        },
+        {
+          "name": "Requires products:read permission",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/rbac-demo/permission",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "rbac-demo", "permission"]
+            },
+            "description": "Requires a Permission(resource='products', action='read') granted to the caller's role -- not seeded by default."
+          }
+        },
+        {
+          "name": "Requires ADMIN role AND products:read permission",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/rbac-demo/role-and-permission",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "rbac-demo", "role-and-permission"]
+            },
+            "description": "Requires the caller to be ADMIN AND have products:read -- the permission is not seeded by default."
+          }
+        },
+        {
+          "name": "Requires ADMIN or VENDOR role (any)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/rbac-demo/roles-any",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "rbac-demo", "roles-any"]
+            }
+          }
+        },
+        {
+          "name": "Requires products:read AND inventory:adjust permissions (all)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/rbac-demo/permissions-all",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "rbac-demo", "permissions-all"]
+            },
+            "description": "Requires both permissions granted to the caller's role -- neither is seeded by default."
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Vendors",
       "item": [
         {
           "name": "Apply to become a vendor",
@@ -144,13 +312,26 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"businessName\": \"Taijul Electronics\",\n  \"businessEmail\": \"contact@taijul-electronics.example\",\n  \"businessPhone\": \"+8801XXXXXXXXX\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
-            "url": { "raw": "{{baseUrl}}/api/vendors", "host": ["{{baseUrl}}"], "path": ["api", "vendors"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/vendors",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "vendors"]
+            }
           }
         },
         {
@@ -158,13 +339,77 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/vendors/me", "host": ["{{baseUrl}}"], "path": ["api", "vendors", "me"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/vendors/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "vendors", "me"]
+            }
+          }
+        },
+        {
+          "name": "Update vendor verification status (ADMIN)",
+          "request": {
+            "method": "PATCH",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"verificationStatus\": \"UNDER_REVIEW\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/vendors/{{vendorId}}/verification",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "vendors", "{{vendorId}}", "verification"]
+            },
+            "description": "Only PENDING->UNDER_REVIEW, UNDER_REVIEW->VERIFIED, PENDING/UNDER_REVIEW->REJECTED are accepted. Run this request three times (UNDER_REVIEW, then VERIFIED) before Activation below."
+          }
+        },
+        {
+          "name": "Activate vendor (ADMIN)",
+          "request": {
+            "method": "PATCH",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/vendors/{{vendorId}}/activation",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "vendors", "{{vendorId}}", "activation"]
+            },
+            "description": "Requires status=PENDING and verificationStatus=VERIFIED (run the verification request(s) above first)."
           }
         }
       ]
     },
     {
-      "name": "04 Shops",
+      "name": "05 Shops",
       "item": [
         {
           "name": "Create shop",
@@ -183,20 +428,35 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"Taijul Electronics\",\n  \"slug\": \"taijul-electronics-{{$randomInt}}\",\n  \"description\": \"Consumer electronics and accessories.\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
-            "url": { "raw": "{{baseUrl}}/api/shops", "host": ["{{baseUrl}}"], "path": ["api", "shops"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/shops",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "shops"]
+            }
           }
         },
         {
           "name": "Get shop by slug (public)",
           "request": {
             "method": "GET",
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/shops/slug/taijul-electronics",
@@ -210,41 +470,66 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/shops/{{shopId}}", "host": ["{{baseUrl}}"], "path": ["api", "shops", "{{shopId}}"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/shops/{{shopId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "shops", "{{shopId}}"]
+            }
           }
         },
         {
           "name": "Update shop",
           "request": {
             "method": "PATCH",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"description\": \"Updated shop description.\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
-            "url": { "raw": "{{baseUrl}}/api/shops/{{shopId}}", "host": ["{{baseUrl}}"], "path": ["api", "shops", "{{shopId}}"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/shops/{{shopId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "shops", "{{shopId}}"]
+            }
           }
         }
       ]
     },
     {
-      "name": "05 Categories",
+      "name": "06 Categories",
       "item": [
         {
           "name": "List categories (public)",
           "request": {
             "method": "GET",
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/categories", "host": ["{{baseUrl}}"], "path": ["api", "categories"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/categories",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "categories"]
+            }
           }
         },
         {
           "name": "Get category by id (public)",
           "request": {
             "method": "GET",
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/categories/{{categoryId}}",
@@ -270,26 +555,66 @@
           ],
           "request": {
             "method": "POST",
-            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminAccessToken}}", "type": "string" }] },
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"Electronics\",\n  \"slug\": \"electronics-{{$randomInt}}\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
-            "url": { "raw": "{{baseUrl}}/api/categories", "host": ["{{baseUrl}}"], "path": ["api", "categories"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/categories",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "categories"]
+            }
           }
         },
         {
           "name": "Update category (ADMIN)",
           "request": {
             "method": "PATCH",
-            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminAccessToken}}", "type": "string" }] },
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"description\": \"Phones, laptops, and accessories.\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/api/categories/{{categoryId}}",
@@ -301,7 +626,7 @@
       ]
     },
     {
-      "name": "06 Products",
+      "name": "07 Products",
       "item": [
         {
           "name": "Create product",
@@ -320,20 +645,60 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"Apple iPhone 17 Pro Max\",\n  \"slug\": \"apple-iphone-17-pro-max-{{$randomInt}}\",\n  \"categoryId\": \"{{categoryId}}\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
-            "url": { "raw": "{{baseUrl}}/api/products", "host": ["{{baseUrl}}"], "path": ["api", "products"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/products",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "products"]
+            }
+          }
+        },
+        {
+          "name": "List products (public, paginated)",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/products?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "products"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
           }
         },
         {
           "name": "Get product by slug (public)",
           "request": {
             "method": "GET",
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/products/slug/apple-iphone-17-pro-max",
@@ -358,11 +723,20 @@
           "name": "Update product",
           "request": {
             "method": "PATCH",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"status\": \"ACTIVE\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/api/products/{{productId}}",
@@ -374,14 +748,311 @@
       ]
     },
     {
-      "name": "07 Cart",
+      "name": "08 Product Variants",
+      "description": "Nested under /products/:productId/variants -- requires the caller to own {{productId}}, or be ADMIN.",
+      "item": [
+        {
+          "name": "Create variant",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sku\": \"IPHONE17PM-256-BLK-{{$randomInt}}\",\n  \"name\": \"256GB / Black\",\n  \"price\": \"179999.00\",\n  \"currency\": \"BDT\",\n  \"attributes\": { \"color\": \"Black\", \"storage\": \"256GB\" }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/products/{{productId}}/variants",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "products", "{{productId}}", "variants"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  pm.environment.set('variantId', pm.response.json().id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List variants",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/products/{{productId}}/variants",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "products", "{{productId}}", "variants"]
+            }
+          }
+        },
+        {
+          "name": "Get variant by id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/products/{{productId}}/variants/{{variantId}}",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "products",
+                "{{productId}}",
+                "variants",
+                "{{variantId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update variant",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"price\": \"169999.00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/products/{{productId}}/variants/{{variantId}}",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "products",
+                "{{productId}}",
+                "variants",
+                "{{variantId}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "09 Inventory",
+      "description": "Nested under /products/:productId/variants/:variantId/inventory -- requires the caller to own {{productId}}, or be ADMIN.",
+      "item": [
+        {
+          "name": "Get inventory",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/products/{{productId}}/variants/{{variantId}}/inventory",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "products",
+                "{{productId}}",
+                "variants",
+                "{{variantId}}",
+                "inventory"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Restock inventory",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 20,\n  \"note\": \"Received shipment\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/products/{{productId}}/variants/{{variantId}}/inventory/restock",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "products",
+                "{{productId}}",
+                "variants",
+                "{{variantId}}",
+                "inventory",
+                "restock"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Adjust inventory (signed delta)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"delta\": -1,\n  \"note\": \"Damaged unit removed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/products/{{productId}}/variants/{{variantId}}/inventory/adjust",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "products",
+                "{{productId}}",
+                "variants",
+                "{{variantId}}",
+                "inventory",
+                "adjust"
+              ]
+            },
+            "description": "Vendor-self-service or ADMIN (ADR-4). delta may be positive or negative; rejected if it would make onHand negative or fall below reserved."
+          }
+        }
+      ]
+    },
+    {
+      "name": "10 Product Images",
+      "description": "Nested under /products/:productId/images. Upload/delete require owning {{productId}} (or ADMIN); the stream request's auth is optional -- inherited from the parent product's own status (ACTIVE = public).",
+      "item": [
+        {
+          "name": "Upload image",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  pm.environment.set('imageId', pm.response.json().id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": [],
+                  "description": "Attach a JPEG, PNG, or WebP file (<=5MB). Content is validated by magic-byte sniffing, not filename/Content-Type."
+                },
+                {
+                  "key": "altText",
+                  "value": "Front view, black colorway",
+                  "type": "text"
+                },
+                {
+                  "key": "isPrimary",
+                  "value": "false",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/products/{{productId}}/images",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "products", "{{productId}}", "images"]
+            }
+          }
+        },
+        {
+          "name": "Stream image (public if product is ACTIVE)",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/products/{{productId}}/images/{{imageId}}",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "products",
+                "{{productId}}",
+                "images",
+                "{{imageId}}"
+              ]
+            },
+            "description": "Publicly streamable with no token if the parent product is ACTIVE. For a DRAFT/INACTIVE/ARCHIVED product, remove the noauth override and use the owning vendor's (or an ADMIN's) accessToken instead."
+          }
+        },
+        {
+          "name": "Delete image",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/products/{{productId}}/images/{{imageId}}",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "products",
+                "{{productId}}",
+                "images",
+                "{{imageId}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "11 Cart",
       "item": [
         {
           "name": "Get my cart",
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/cart", "host": ["{{baseUrl}}"], "path": ["api", "cart"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/cart",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "cart"]
+            }
           }
         },
         {
@@ -404,24 +1075,46 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"variantId\": \"{{variantId}}\",\n  \"quantity\": 1\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
-            "url": { "raw": "{{baseUrl}}/api/cart/items", "host": ["{{baseUrl}}"], "path": ["api", "cart", "items"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/cart/items",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "cart", "items"]
+            }
           }
         },
         {
           "name": "Update cart item quantity",
           "request": {
             "method": "PATCH",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"quantity\": 2\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/api/cart/items/{{cartItemId}}",
@@ -447,13 +1140,17 @@
           "request": {
             "method": "DELETE",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/cart/items", "host": ["{{baseUrl}}"], "path": ["api", "cart", "items"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/cart/items",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "cart", "items"]
+            }
           }
         }
       ]
     },
     {
-      "name": "08 Checkout",
+      "name": "12 Checkout",
       "item": [
         {
           "name": "Checkout",
@@ -472,26 +1169,43 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"shippingAddress\": {\n    \"fullName\": \"Jane Doe\",\n    \"phone\": \"+8801XXXXXXXXX\",\n    \"addressLine1\": \"House 10, Road 5\",\n    \"city\": \"Dhaka\",\n    \"postalCode\": \"1207\",\n    \"country\": \"BD\"\n  },\n  \"customerNote\": \"Please call before delivery.\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
-            "url": { "raw": "{{baseUrl}}/api/checkout", "host": ["{{baseUrl}}"], "path": ["api", "checkout"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/checkout",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "checkout"]
+            }
           }
         }
       ]
     },
     {
-      "name": "09 Orders",
+      "name": "13 Orders",
       "item": [
         {
           "name": "List my orders",
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/orders", "host": ["{{baseUrl}}"], "path": ["api", "orders"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders"]
+            }
           }
         },
         {
@@ -509,14 +1223,18 @@
       ]
     },
     {
-      "name": "10 Vendor Orders",
+      "name": "14 Vendor Orders",
       "item": [
         {
           "name": "List my vendor orders",
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/vendor-orders", "host": ["{{baseUrl}}"], "path": ["api", "vendor-orders"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/vendor-orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "vendor-orders"]
+            }
           }
         },
         {
@@ -530,11 +1248,38 @@
               "path": ["api", "vendor-orders", "{{vendorOrderId}}"]
             }
           }
+        },
+        {
+          "name": "Update vendor order status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"CONFIRMED\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/vendor-orders/{{vendorOrderId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "vendor-orders", "{{vendorOrderId}}", "status"]
+            },
+            "description": "Requires the caller to own this VendorOrder, or be ADMIN. Only the documented transitions are accepted: PENDING->CONFIRMED, CONFIRMED->PROCESSING, PROCESSING->READY_TO_SHIP, READY_TO_SHIP->SHIPPED, SHIPPED->DELIVERED, and PENDING/CONFIRMED->CANCELLED."
+          }
         }
       ]
     },
     {
-      "name": "11 Payments",
+      "name": "15 Payments",
       "item": [
         {
           "name": "Create payment",
@@ -557,13 +1302,26 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"masterOrderId\": \"{{masterOrderId}}\",\n  \"method\": \"CASH_ON_DELIVERY\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
-            "url": { "raw": "{{baseUrl}}/api/payments", "host": ["{{baseUrl}}"], "path": ["api", "payments"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/payments",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "payments"]
+            }
           }
         },
         {
@@ -589,7 +1347,105 @@
               "path": ["api", "payments", "{{paymentId}}", "retry"]
             }
           }
+        }
+      ]
+    },
+    {
+      "name": "16 Webhooks",
+      "item": [
+        {
+          "name": "Payment succeeded event",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"MANUAL\",\n  \"eventId\": \"evt-{{$randomUUID}}\",\n  \"eventType\": \"payment.succeeded\",\n  \"providerReference\": \"{{paymentProviderReference}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/webhook",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "payments", "webhook"]
+            }
+          }
         },
+        {
+          "name": "Payment failed event",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"MANUAL\",\n  \"eventId\": \"evt-{{$randomUUID}}\",\n  \"eventType\": \"payment.failed\",\n  \"providerReference\": \"{{paymentProviderReference}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/webhook",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "payments", "webhook"]
+            }
+          }
+        },
+        {
+          "name": "Refund succeeded event",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"MANUAL\",\n  \"eventId\": \"evt-{{$randomUUID}}\",\n  \"eventType\": \"refund.succeeded\",\n  \"providerReference\": \"{{refundProviderReference}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/webhook",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "payments", "webhook"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "17 Refunds",
+      "description": "Refund creation is ADMIN-only (no customer-facing refund-request workflow is documented). See 16 Webhooks for refund.succeeded/refund.failed settlement events.",
+      "item": [
         {
           "name": "Create refund (ADMIN)",
           "event": [
@@ -609,65 +1465,36 @@
           ],
           "request": {
             "method": "POST",
-            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminAccessToken}}", "type": "string" }] },
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"amount\": \"500.00\",\n  \"reason\": \"CUSTOMER_RETURN\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/api/payments/{{paymentId}}/refunds",
               "host": ["{{baseUrl}}"],
               "path": ["api", "payments", "{{paymentId}}", "refunds"]
             }
-          }
-        }
-      ]
-    },
-    {
-      "name": "12 Webhooks",
-      "item": [
-        {
-          "name": "Payment succeeded event",
-          "request": {
-            "method": "POST",
-            "auth": { "type": "noauth" },
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"provider\": \"MANUAL\",\n  \"eventId\": \"evt-{{$randomUUID}}\",\n  \"eventType\": \"payment.succeeded\",\n  \"providerReference\": \"{{paymentProviderReference}}\"\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "url": { "raw": "{{baseUrl}}/api/payments/webhook", "host": ["{{baseUrl}}"], "path": ["api", "payments", "webhook"] }
-          }
-        },
-        {
-          "name": "Payment failed event",
-          "request": {
-            "method": "POST",
-            "auth": { "type": "noauth" },
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"provider\": \"MANUAL\",\n  \"eventId\": \"evt-{{$randomUUID}}\",\n  \"eventType\": \"payment.failed\",\n  \"providerReference\": \"{{paymentProviderReference}}\"\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "url": { "raw": "{{baseUrl}}/api/payments/webhook", "host": ["{{baseUrl}}"], "path": ["api", "payments", "webhook"] }
-          }
-        },
-        {
-          "name": "Refund succeeded event",
-          "request": {
-            "method": "POST",
-            "auth": { "type": "noauth" },
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"provider\": \"MANUAL\",\n  \"eventId\": \"evt-{{$randomUUID}}\",\n  \"eventType\": \"refund.succeeded\",\n  \"providerReference\": \"{{refundProviderReference}}\"\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "url": { "raw": "{{baseUrl}}/api/payments/webhook", "host": ["{{baseUrl}}"], "path": ["api", "payments", "webhook"] }
           }
         }
       ]

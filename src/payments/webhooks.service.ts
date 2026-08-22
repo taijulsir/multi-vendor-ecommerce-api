@@ -222,62 +222,78 @@ export class WebhooksService {
 
     const refund = await this.prisma.refund.findFirst({
       where: { providerReference },
-      include: { payment: true },
+      include: { payment: { select: { masterOrderId: true } } },
     });
 
     if (!refund) {
       return this.markUnmatched(webhookEventId, 'No matching refund');
     }
 
-    // Same idempotency-by-value guard as handlePaymentOutcome — never
-    // re-increment Payment.refundedAmount for a refund that was already
-    // resolved (that field is an accumulation, so re-applying it would
-    // silently double-credit the refund unlike the absolute-set fields
-    // in handlePaymentOutcome).
+    // Fast-path idempotency-by-value check — not, by itself, what makes
+    // this concurrency-safe (see below); it just avoids opening a
+    // transaction for the common case of a genuine duplicate delivered
+    // well after settlement.
     if (refund.status !== 'PENDING') {
-      await this.prisma.paymentWebhookEvent.update({
-        where: { id: webhookEventId },
-        data: {
-          status: 'IGNORED',
-          processedAt: new Date(),
-          errorMessage:
-            'Refund already resolved; financial effect not reapplied',
-        },
-      });
-
-      return { status: 'duplicate' };
+      return this.markDuplicateRefund(webhookEventId);
     }
 
-    await this.prisma.$transaction(async (tx) => {
-      await tx.refund.update({
-        where: { id: refund.id },
+    // docs/final-system-audit.md M-1 fix. The previous implementation
+    // read `refund.payment.refundedAmount` once, computed
+    // `refundedAmount + refund.amount` in JavaScript, and wrote that
+    // absolute value back — safe for a single refund settling once, but
+    // if two *different* refunds for the same Payment settle
+    // concurrently, both transactions could read the same pre-update
+    // `refundedAmount` and the later commit would silently overwrite
+    // (lose) the earlier one's contribution.
+    //
+    // Fixed the same way this codebase already solves every other
+    // concurrent-accumulation problem (`checkout.service.ts`'s inventory
+    // reservation, `vendor-orders.service.ts`'s status transition):
+    // an atomic conditional `UPDATE`, never a read-then-absolute-set.
+    // `refunded_amount = refunded_amount + $amount` is computed by
+    // Postgres from the row's *current* value at write time — under
+    // concurrent execution the two updates serialize at the row level
+    // and both contributions are reflected, regardless of commit order
+    // (verified directly against real Postgres under genuine concurrent
+    // load — see `webhooks.service.spec.ts`/the new concurrent e2e test).
+    const outcome = await this.prisma.$transaction(async (tx) => {
+      // Atomic conditional transition of the refund itself — the
+      // authoritative concurrency guard for "this exact refund already
+      // settled," closing the same race the fast-path check above only
+      // catches when the two attempts aren't truly concurrent.
+      const refundTransition = await tx.refund.updateMany({
+        where: { id: refund.id, status: 'PENDING' },
         data: {
           status: succeeded ? 'SUCCEEDED' : 'FAILED',
           processedAt: new Date(),
         },
       });
 
-      if (succeeded) {
-        const newRefundedAmount = refund.payment.refundedAmount.add(
-          refund.amount,
-        );
-        const newPaymentStatus = newRefundedAmount.greaterThanOrEqualTo(
-          refund.payment.paidAmount,
-        )
-          ? 'REFUNDED'
-          : 'PARTIALLY_REFUNDED';
+      if (refundTransition.count === 0) {
+        return 'duplicate' as const;
+      }
 
-        await tx.payment.update({
-          where: { id: refund.paymentId },
-          data: {
-            refundedAmount: newRefundedAmount,
-            status: newPaymentStatus,
-          },
-        });
+      if (succeeded) {
+        const [updatedPayment] = await tx.$queryRaw<
+          { id: string; status: string }[]
+        >`
+          UPDATE payments
+          SET refunded_amount = refunded_amount + ${refund.amount}::numeric,
+              status = CASE
+                WHEN refunded_amount + ${refund.amount}::numeric >= paid_amount THEN 'REFUNDED'::"PaymentStatus"
+                ELSE 'PARTIALLY_REFUNDED'::"PaymentStatus"
+              END,
+              updated_at = now()
+          WHERE id = ${refund.paymentId}::uuid
+          RETURNING id, status
+        `;
 
         await tx.masterOrder.update({
           where: { id: refund.payment.masterOrderId },
-          data: { paymentStatus: newPaymentStatus },
+          data: {
+            paymentStatus: updatedPayment.status as
+              'PARTIALLY_REFUNDED' | 'REFUNDED',
+          },
         });
       }
 
@@ -285,9 +301,37 @@ export class WebhooksService {
         where: { id: webhookEventId },
         data: { status: 'PROCESSED', processedAt: new Date() },
       });
+
+      return 'processed' as const;
     });
 
-    return { status: 'processed' };
+    if (outcome === 'duplicate') {
+      return this.markDuplicateRefund(webhookEventId);
+    }
+
+    return { status: outcome };
+  }
+
+  /**
+   * Same idempotency-by-value guard as `handlePaymentOutcome` — never
+   * re-applies a refund's financial effect once it has already resolved
+   * (`refundedAmount` is an accumulation, unlike the absolute-set fields
+   * `handlePaymentOutcome` writes, so re-applying it would silently
+   * double-credit the refund).
+   */
+  private async markDuplicateRefund(
+    webhookEventId: string,
+  ): Promise<{ status: WebhookProcessingOutcome }> {
+    await this.prisma.paymentWebhookEvent.update({
+      where: { id: webhookEventId },
+      data: {
+        status: 'IGNORED',
+        processedAt: new Date(),
+        errorMessage: 'Refund already resolved; financial effect not reapplied',
+      },
+    });
+
+    return { status: 'duplicate' };
   }
 
   private async markUnmatched(

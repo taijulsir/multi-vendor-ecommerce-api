@@ -26,6 +26,7 @@ import {
   ApiOperation,
   ApiParam,
   ApiPayloadTooLargeResponse,
+  ApiSecurity,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
@@ -140,7 +141,17 @@ export class ProductImagesController {
 
   @Get(':imageId')
   @UseGuards(OptionalJwtAuthGuard)
+  // Phase 25 Swagger audit: `@ApiBearerAuth()` alone marks this route as
+  // *requiring* the bearer scheme in the generated OpenAPI security
+  // requirement — inaccurate for a route whose auth is genuinely
+  // optional (an ACTIVE product's image needs none at all). Declaring
+  // both a bearer requirement *and* an empty requirement (`{}`) is the
+  // standard OpenAPI 3 way to express "this scheme is accepted, but not
+  // mandatory" — Swagger UI still offers the Authorization field for
+  // testing the owner/ADMIN case, but no longer implies a token is
+  // always required.
   @ApiBearerAuth()
+  @ApiSecurity({})
   @ApiParam(PRODUCT_ID_PARAM)
   @ApiParam(IMAGE_ID_PARAM)
   @ApiOperation({
