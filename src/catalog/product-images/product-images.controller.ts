@@ -97,7 +97,8 @@ export class ProductImagesController {
         variantId: {
           type: 'string',
           format: 'uuid',
-          description: 'Optional — attach to a specific variant of this product.',
+          description:
+            'Optional — attach to a specific variant of this product.',
         },
         altText: { type: 'string' },
         isPrimary: { type: 'boolean' },
@@ -112,7 +113,7 @@ export class ProductImagesController {
       "client's declared Content-Type or filename) and stored under a " +
       'server-generated filename — the original filename is never used ' +
       'as a stored path. Returns the created image record; `url` is the ' +
-      'path to this image\'s streaming endpoint below.',
+      "path to this image's streaming endpoint below.",
   })
   @ApiCreatedResponse({ description: 'The created image record.' })
   @ApiUnauthorizedResponse({ description: 'Missing/invalid access token.' })
@@ -126,7 +127,9 @@ export class ProductImagesController {
       'Missing file, unsupported image type, or variantId does not ' +
       'reference a variant of this product.',
   })
-  @ApiPayloadTooLargeResponse({ description: 'The file exceeds the size limit.' })
+  @ApiPayloadTooLargeResponse({
+    description: 'The file exceeds the size limit.',
+  })
   create(
     @Param('productId') productId: string,
     @UploadedFile() file: Express.Multer.File | undefined,
@@ -149,7 +152,9 @@ export class ProductImagesController {
       'to own the product or be an ADMIN, same as viewing the product ' +
       'itself.',
   })
-  @ApiOkResponse({ description: 'The image bytes, with an image/* Content-Type.' })
+  @ApiOkResponse({
+    description: 'The image bytes, with an image/* Content-Type.',
+  })
   @ApiForbiddenResponse({
     description:
       'Authenticated, but does not own a non-public parent product. ' +
@@ -164,11 +169,12 @@ export class ProductImagesController {
     @CurrentUser() user: SafeUser | undefined,
     @Res({ passthrough: false }) res: Response,
   ): Promise<void> {
-    const { stream, mimeType } = await this.productImagesService.resolveStreamable(
-      productId,
-      imageId,
-      user,
-    );
+    const { stream, mimeType } =
+      await this.productImagesService.resolveStreamable(
+        productId,
+        imageId,
+        user,
+      );
 
     res.setHeader('Content-Type', mimeType);
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -176,7 +182,9 @@ export class ProductImagesController {
 
     stream.on('error', () => {
       if (!res.headersSent) {
-        res.status(404).json(new NotFoundException('Image not found').getResponse());
+        res
+          .status(404)
+          .json(new NotFoundException('Image not found').getResponse());
       } else {
         res.destroy();
       }

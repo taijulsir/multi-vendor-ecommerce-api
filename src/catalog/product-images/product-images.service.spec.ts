@@ -97,9 +97,7 @@ describe('ProductImagesService', () => {
       // The client's original filename must never reach the stored
       // filename or the DB row.
       const createCall = prisma.productImage.create.mock.calls[0][0];
-      expect(JSON.stringify(createCall)).not.toContain(
-        'client-supplied-name',
-      );
+      expect(JSON.stringify(createCall)).not.toContain('client-supplied-name');
       expect(result).not.toHaveProperty('storageKey');
       expect(result).not.toHaveProperty('deletedAt');
     });
@@ -247,7 +245,9 @@ describe('ProductImagesService', () => {
         status: 'DRAFT',
       });
       authorizationService.hasRole.mockResolvedValue(false);
-      ownershipService.getVendorIdForUser.mockResolvedValue('other-vendor-uuid');
+      ownershipService.getVendorIdForUser.mockResolvedValue(
+        'other-vendor-uuid',
+      );
       ownershipService.isProductOwnedByVendor.mockResolvedValue(false);
 
       await expect(
@@ -292,7 +292,11 @@ describe('ProductImagesService', () => {
       prisma.productImage.findFirst.mockResolvedValue(null);
 
       await expect(
-        service.resolveStreamable('product-uuid', 'missing-image-uuid', undefined),
+        service.resolveStreamable(
+          'product-uuid',
+          'missing-image-uuid',
+          undefined,
+        ),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 

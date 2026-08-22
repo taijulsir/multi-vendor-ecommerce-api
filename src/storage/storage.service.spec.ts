@@ -21,7 +21,9 @@ describe('LocalFileStorageService', () => {
   beforeEach(async () => {
     rootDir = await mkdtemp(join(tmpdir(), 'storage-service-test-'));
     configService.get.mockReturnValue(rootDir);
-    service = new LocalFileStorageService(configService as unknown as ConfigService);
+    service = new LocalFileStorageService(
+      configService as unknown as ConfigService,
+    );
     await service.onModuleInit();
   });
 
@@ -46,7 +48,10 @@ describe('LocalFileStorageService', () => {
     it('falls back to the documented default when FILE_STORAGE_DIR is unset', () => {
       configService.get.mockReturnValue(undefined);
       expect(
-        () => new LocalFileStorageService(configService as unknown as ConfigService),
+        () =>
+          new LocalFileStorageService(
+            configService as unknown as ConfigService,
+          ),
       ).not.toThrow();
     });
   });
@@ -133,7 +138,9 @@ describe('LocalFileStorageService', () => {
     });
 
     it('never deletes anything and never throws for a traversal attempt on delete', async () => {
-      await expect(service.deleteFile('../escaped.txt')).resolves.toBeUndefined();
+      await expect(
+        service.deleteFile('../escaped.txt'),
+      ).resolves.toBeUndefined();
     });
   });
 

@@ -20,6 +20,13 @@ const GENERIC_CONFLICT_MESSAGE = 'A conflicting record already exists.';
 const GENERIC_NOT_FOUND_MESSAGE = 'The requested resource was not found.';
 const GENERIC_SERVER_ERROR_MESSAGE = 'An unexpected error occurred.';
 
+// Widened to a plain `number` deliberately — `exception.getStatus()`
+// already returns `number`, not `HttpStatus`, so comparing it directly
+// against an `HttpStatus` enum member trips
+// `@typescript-eslint/no-unsafe-enum-comparison`. This constant keeps the
+// comparison tied to the enum's meaning rather than a bare magic number.
+const INTERNAL_SERVER_ERROR_STATUS: number = HttpStatus.INTERNAL_SERVER_ERROR;
+
 /**
  * The last line of defense, not the primary error-handling mechanism.
  * Every service in this codebase already translates the domain-meaningful
@@ -108,7 +115,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     request: Request,
     exception: unknown,
   ): void {
-    if (status < HttpStatus.INTERNAL_SERVER_ERROR) {
+    if (status < INTERNAL_SERVER_ERROR_STATUS) {
       return;
     }
 
@@ -117,10 +124,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
         ? (exception.stack ?? exception.message)
         : this.safeDescribe(exception);
 
-    this.logger.error(
-      `${request.method} ${request.url} → ${status}`,
-      detail,
-    );
+    this.logger.error(`${request.method} ${request.url} → ${status}`, detail);
   }
 
   private safeDescribe(exception: unknown): string {

@@ -1,0 +1,5 @@
+# Prisma's own codegen output (git-ignored, never committed — see
+# .gitignore). Regenerated fresh by `npx prisma generate` on every
+# install/CI run; formatting it checks Prisma's code generator's own
+# style, not this project's source (Phase 24 audit).
+src/generated/

@@ -231,9 +231,7 @@ describe('Product Images API (e2e)', () => {
         // Physically exists on disk, under a random name — never the
         // client's original filename.
         expect(stored.storageKey).not.toContain('my-original-filename');
-        expect(existsSync(join(tempStorageDir, stored.storageKey!))).toBe(
-          true,
-        );
+        expect(existsSync(join(tempStorageDir, stored.storageKey!))).toBe(true);
 
         await prisma.productImage.delete({ where: { id: stored.id } });
       });
@@ -260,7 +258,9 @@ describe('Product Images API (e2e)', () => {
         expect(response.body.variantId).toBe(variant.body.id);
         expect(response.body.isPrimary).toBe(true);
 
-        await prisma.productImage.delete({ where: { id: response.body.id as string } });
+        await prisma.productImage.delete({
+          where: { id: response.body.id as string },
+        });
       });
 
       it('rejects (400) a variantId that belongs to a different product', async () => {
@@ -313,7 +313,9 @@ describe('Product Images API (e2e)', () => {
           .attach('file', PNG_BUFFER, 'x.png')
           .expect(201);
 
-        await prisma.productImage.delete({ where: { id: response.body.id as string } });
+        await prisma.productImage.delete({
+          where: { id: response.body.id as string },
+        });
       });
 
       it('rejects (400) content that is not one of the allowed image types, regardless of declared filename/extension', async () => {
@@ -362,7 +364,7 @@ describe('Product Images API (e2e)', () => {
           .expect(400);
       });
 
-      it('rejects (404) an ADMIN uploading to a nonexistent product (ProductOwnershipGuard\'s ADMIN bypass skips existence checking, so the service must)', async () => {
+      it("rejects (404) an ADMIN uploading to a nonexistent product (ProductOwnershipGuard's ADMIN bypass skips existence checking, so the service must)", async () => {
         await request(app.getHttpServer())
           .post(`/api/products/${randomUUID()}/images`)
           .set('Authorization', `Bearer ${adminUser.accessToken}`)
@@ -395,7 +397,9 @@ describe('Product Images API (e2e)', () => {
         expect(streamed.headers['x-content-type-options']).toBe('nosniff');
         expect(Buffer.compare(streamed.body as Buffer, PNG_BUFFER)).toBe(0);
 
-        await prisma.productImage.delete({ where: { id: uploaded.body.id as string } });
+        await prisma.productImage.delete({
+          where: { id: uploaded.body.id as string },
+        });
       });
 
       it('reports 404 (no disclosure) for an unauthenticated request to a DRAFT product image', async () => {
@@ -409,7 +413,9 @@ describe('Product Images API (e2e)', () => {
           .get(uploaded.body.url as string)
           .expect(404);
 
-        await prisma.productImage.delete({ where: { id: uploaded.body.id as string } });
+        await prisma.productImage.delete({
+          where: { id: uploaded.body.id as string },
+        });
       });
 
       it('allows the owning vendor to stream a DRAFT product image', async () => {
@@ -426,7 +432,9 @@ describe('Product Images API (e2e)', () => {
 
         expect(streamed.headers['content-type']).toBe('image/webp');
 
-        await prisma.productImage.delete({ where: { id: uploaded.body.id as string } });
+        await prisma.productImage.delete({
+          where: { id: uploaded.body.id as string },
+        });
       });
 
       it('rejects (403) a different authenticated vendor streaming a DRAFT product image', async () => {
@@ -441,7 +449,9 @@ describe('Product Images API (e2e)', () => {
           .set('Authorization', `Bearer ${vendorB.accessToken}`)
           .expect(403);
 
-        await prisma.productImage.delete({ where: { id: uploaded.body.id as string } });
+        await prisma.productImage.delete({
+          where: { id: uploaded.body.id as string },
+        });
       });
 
       it('allows an ADMIN to stream a DRAFT product image regardless of ownership', async () => {
@@ -456,7 +466,9 @@ describe('Product Images API (e2e)', () => {
           .set('Authorization', `Bearer ${adminUser.accessToken}`)
           .expect(200);
 
-        await prisma.productImage.delete({ where: { id: uploaded.body.id as string } });
+        await prisma.productImage.delete({
+          where: { id: uploaded.body.id as string },
+        });
       });
 
       it('reports 404 for a nonexistent imageId under a real product', async () => {
@@ -481,7 +493,9 @@ describe('Product Images API (e2e)', () => {
         expect(existsSync(diskPath)).toBe(true);
 
         await request(app.getHttpServer())
-          .delete(`/api/products/${draftProductId}/images/${uploaded.body.id as string}`)
+          .delete(
+            `/api/products/${draftProductId}/images/${uploaded.body.id as string}`,
+          )
           .set('Authorization', `Bearer ${vendorA.accessToken}`)
           .expect(204);
 
@@ -499,10 +513,14 @@ describe('Product Images API (e2e)', () => {
           .expect(201);
 
         await request(app.getHttpServer())
-          .delete(`/api/products/${draftProductId}/images/${uploaded.body.id as string}`)
+          .delete(
+            `/api/products/${draftProductId}/images/${uploaded.body.id as string}`,
+          )
           .expect(401);
 
-        await prisma.productImage.delete({ where: { id: uploaded.body.id as string } });
+        await prisma.productImage.delete({
+          where: { id: uploaded.body.id as string },
+        });
       });
 
       it("rejects (403) a different vendor deleting vendor A's image", async () => {
@@ -513,11 +531,15 @@ describe('Product Images API (e2e)', () => {
           .expect(201);
 
         await request(app.getHttpServer())
-          .delete(`/api/products/${draftProductId}/images/${uploaded.body.id as string}`)
+          .delete(
+            `/api/products/${draftProductId}/images/${uploaded.body.id as string}`,
+          )
           .set('Authorization', `Bearer ${vendorB.accessToken}`)
           .expect(403);
 
-        await prisma.productImage.delete({ where: { id: uploaded.body.id as string } });
+        await prisma.productImage.delete({
+          where: { id: uploaded.body.id as string },
+        });
       });
 
       it('rejects (404) deleting a nonexistent image', async () => {
@@ -553,7 +575,9 @@ describe('Product Images API (e2e)', () => {
           .get(`/api/storage/uploads/${stored.storageKey}`)
           .expect(404);
 
-        await prisma.productImage.delete({ where: { id: uploaded.body.id as string } });
+        await prisma.productImage.delete({
+          where: { id: uploaded.body.id as string },
+        });
       });
 
       it('writes uploaded files only under the configured temporary storage root, never the dev/production default', async () => {
@@ -566,7 +590,9 @@ describe('Product Images API (e2e)', () => {
         const filesInTempDir = await readdir(tempStorageDir);
         expect(filesInTempDir.length).toBeGreaterThan(0);
 
-        await prisma.productImage.delete({ where: { id: uploaded.body.id as string } });
+        await prisma.productImage.delete({
+          where: { id: uploaded.body.id as string },
+        });
       });
     });
   });

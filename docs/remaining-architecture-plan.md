@@ -937,7 +937,7 @@ dependency analysis.
 > re-run three times with no flake. `npx prisma validate`/`migrate
 > status` clean with zero schema changes — none expected, none made.
 
-## Phase 24 — Engineering Cleanup
+## Phase 24 — Engineering Cleanup / Production & Engineering Hardening — IMPLEMENTED (2026-08-22)
 
 - **Objective:** implement P2's lint-strictness item.
 - **In scope:** re-enable `no-explicit-any`, restore `no-floating-promises`/
@@ -954,6 +954,91 @@ dependency analysis.
   the stricter config.
 - **Risk/ambiguity:** low, but genuinely unpredictable scope until run —
   do not pre-estimate how many violations will surface.
+
+> **STATUS: IMPLEMENTED (2026-08-22).** The session that executed this
+> phase was given a broader "Production & Engineering Hardening" brief
+> than this document's own narrower lint-only definition above — full
+> audit across TypeScript strictness, ESLint, Docker, CI/CD, security
+> config, env validation, dependency hygiene, and git hygiene, fixing
+> only what the audit found genuinely justified. See this phase's final
+> report for the complete 20-item audit; summary below.
+>
+> **ESLint strictness (this doc's original scope):** re-running with
+> `no-explicit-any`/`no-floating-promises`/`no-unsafe-argument` all at
+> `recommendedTypeChecked`'s default `error` found **zero violations
+> anywhere in production code**, and zero `no-floating-promises`/
+> `no-unsafe-argument` violations even in test files — only
+> `no-explicit-any` in test files' manual mocking needed to move from a
+> codebase-wide `off` into the existing test-scoped exemption block
+> (`eslint.config.mjs`). Zero application code changed.
+>
+> **MUST FIX found and fixed:** linting/formatting/type-checking were
+> silently broken on the exact files Phases 22-23 had just added (43
+> Prettier violations, one `@typescript-eslint/no-unsafe-enum-comparison`
+> in `AllExceptionsFilter`, one `tsc` tuple-indexing error in its spec) —
+> would have failed the very next CI run. Fixed; zero behavior change.
+>
+> **TypeScript strictness (audited, not blindly enabled):** tested every
+> `strict`-family flag individually against the real codebase before
+> deciding. `noImplicitAny`, `noUnusedLocals`, `noUnusedParameters`,
+> `noImplicitReturns`, `strictFunctionTypes`, `strictBindCallApply`,
+> `useUnknownInCatchVariables`, `alwaysStrict` — all found **zero
+> violations**, added to `tsconfig.json` with zero code changes.
+> `strictPropertyInitialization` was tested too and found **37 violations
+> across every DTO class** (they rely on `ValidationPipe` to populate
+> fields post-construction) — explicitly **not enabled**, per this
+> phase's own "do not enable strict flags if it creates a massive
+> unrelated refactor" instruction.
+>
+> **Other MUST FIX / SHOULD FIX applied:** (1) `src/main.ts` read
+> `process.env.PORT` directly, bypassing the already-validated
+> `ConfigService` — now reads through it, matching every other module.
+> (2) JWT secret strength was never validated beyond non-empty — added a
+> 32-character minimum and an access-secret-≠-refresh-secret check to
+> `env.validation.ts` (`.env`/CI secrets already exceed this; zero
+> friction). (3) `dotenv`, imported directly by `prisma.config.ts`, was
+> only available *transitively* (via `@nestjs/config`/`prisma`'s own
+> dependency trees) — never declared as this project's own dependency;
+> added explicitly. (4) `src/generated/` (Prisma's git-ignored codegen
+> output) had no ESLint/Prettier exclusion and was being linted/formatted
+> as if it were project source; added `src/generated/**` to
+> `eslint.config.mjs`'s `ignores` and a new `.prettierignore`. (5)
+> Dockerfile's runtime stage ran as root; added a `chown` + `USER node`
+> step (verified: real `docker build` + `docker run` against real
+> Postgres/Redis, confirmed non-root via `id`, confirmed graceful
+> `docker stop` exits 0). (6) `.gitignore` only listed four
+> `.env.*.local` variants by name; broadened to the same `.env.*` +
+> `!.env.example` pattern `.dockerignore` already used. (7) `storage`
+> added to `.dockerignore` (defense-in-depth; the Dockerfile's selective
+> `COPY`s already wouldn't include it).
+>
+> **Audited and found already correct, no change made:** CORS
+> (intentionally deferred, documented — left deferred), Swagger
+> (`docs/project-completion-audit.md` explicitly states it "stays on in
+> every environment" — left always-on), body limits (Express/Nest
+> defaults + Phase 22's explicit 5MB image cap — no second limit
+> invented), JWT/argon2id/refresh-token-rotation architecture (already
+> production-grade, untouched), ownership/RBAC (untouched), Redis/BullMQ
+> (confirmed still genuinely idle, no queues invented), Prisma/migrations
+> (`validate`/`migrate status` both clean, zero schema changes),
+> checkout's per-line atomic-`UPDATE` loops (not an N+1 bug — the
+> deliberate concurrency-safety mechanism itself), `npm audit`'s 3 high
+> findings (`deepmerge-ts` via `@prisma/config`, devDependency-only via
+> the `prisma` CLI — no non-breaking fix exists yet upstream, only a
+> Prisma 8 pre-release; explicitly not force-upgraded per this phase's
+> own instruction).
+>
+> **Test reliability:** the full e2e suite flaked twice during this
+> phase's own validation (two different, unrelated assertions failing in
+> `orders.e2e-spec.ts`, immediately after a period of heavy local Docker
+> build/run activity for the Dockerfile audit above) — isolated by
+> re-running `orders.e2e-spec.ts` alone (34/34 clean) and then the full
+> suite twice more (327/327 both times), confirming environmental
+> resource contention, not a regression. No test was weakened or removed.
+>
+> 19 new unit tests (`env.validation.spec.ts`) added; full suite (484
+> unit / 327 e2e) green. `npx prisma validate`/`migrate status` clean
+> with zero schema changes.
 
 ## Phase 25 — Documentation / Postman Refresh
 
@@ -1647,7 +1732,8 @@ fulfillment lifecycle added following Phase 19; paginated public product
 list added following Phase 20; ProductVariant + Inventory foundation
 added following Phase 21; secure local Product Image storage added
 following Phase 22; consistent global error contract + graceful shutdown
-added following Phase 23.)
+added following Phase 23; production/engineering hardening added
+following Phase 24.)
 
 - JWT authentication with refresh-token rotation and reuse detection.
 - RBAC with live database re-evaluation.
@@ -1698,8 +1784,18 @@ added following Phase 23.)
   semantics are unchanged, not "normalized" (see DO NOT CLAIM YET: rate
   limiting/structured logging/secrets management still make "production
   ready" unqualified untrue).
+- Production/engineering hardening (Phase 24) — non-root Docker runtime
+  user (verified via a real `docker build`/`docker run` against real
+  Postgres/Redis), JWT secret strength validated at startup (minimum
+  length, access ≠ refresh), `tsconfig.json` strictness increased with
+  zero code changes required (proof the codebase already met it), ESLint
+  strictness fully restored (`no-explicit-any`/`no-floating-promises`/
+  `no-unsafe-argument` all at `error` for application code). **Claim
+  precisely this** — rate limiting, structured logging, and secrets-
+  management integration remain the honest gap to "production ready"
+  unqualified (see DO NOT CLAIM YET).
 - Two-layer webhook idempotency.
-- 465 unit + 327 e2e tests, including adversarial and concurrency
+- 484 unit + 327 e2e tests, including adversarial and concurrency
   scenarios.
 - Verified Docker build + CI pipeline against real Postgres/Redis.
 
@@ -1820,8 +1916,8 @@ phase sequence.
 ## Architecture
 - [x] Current architecture reconstructed and verified (Section 2)
 - [x] Remaining architecture planned (this document)
-- [ ] Phase 17-26 execution (Phases 17-23 complete as of 2026-08-22; Phases
-      24-26 not started)
+- [ ] Phase 17-26 execution (Phases 17-24 complete as of 2026-08-22; Phases
+      25-26 not started)
 
 ## Backend
 - [x] Vendor verification/activation (Phase 17) — completed 2026-08-22
@@ -1883,6 +1979,11 @@ phase sequence.
       HttpException status/body changed
 - [x] Graceful shutdown (Phase 23) — completed 2026-08-22,
       `app.enableShutdownHooks()`
+- [x] JWT secret strength validation (Phase 24) — completed 2026-08-22:
+      32-character minimum, access ≠ refresh, enforced at startup
+- [x] Docker runtime hardening (Phase 24) — completed 2026-08-22: runtime
+      stage runs as the non-root `node` user, verified via a real
+      `docker build`/`docker run` against real Postgres/Redis
 
 ## Testing
 - [x] Vendor verification/activation tests, unit + e2e (Phase 17) —
@@ -1905,6 +2006,10 @@ phase sequence.
       non-Error safe 500, no internal-detail leakage, shutdown-hook
       invocation proof). Genuine OS-signal (`SIGTERM`) delivery is not
       exercised in Jest — documented as a limitation, not faked.
+- [x] Environment validation tests (Phase 24) — completed 2026-08-22 (19
+      unit: required-var checks, JWT secret strength, PORT/REDIS_PORT
+      range checks, FILE_STORAGE_DIR — `env.validation.ts` had zero
+      direct test coverage before this phase)
 
 ## Swagger
 - [x] Auto-covered by each phase's endpoint additions (no separate task) —
@@ -1928,15 +2033,25 @@ phase sequence.
       (Phase 22)
 - [x] `docs/architecture.md` §17/§32/§37/§39 update (post-Phase 23) —
       completed 2026-08-22, global exception filter + graceful shutdown
+- [x] `docs/architecture.md` §12/§37/§39 update (post-Phase 24) —
+      completed 2026-08-22, env validation + TypeScript/ESLint strictness
+      + Docker hardening audit summary
 - [ ] `docs/API.md` refresh (Phase 25)
 - [ ] README refresh (Phase 25)
 - [x] `.env.example` update for `FILE_STORAGE_DIR` (Phase 22) — completed
+      2026-08-22
+- [x] `.env.example` JWT secret strength note (Phase 24) — completed
       2026-08-22
 
 ## CI/CD
 - [x] Pipeline already covers build/lint/test for any new code
       automatically — no CI change needed per phase unless a new service
       dependency is introduced (none currently anticipated)
+- [x] CI workflow audited (Phase 24) — completed 2026-08-22: YAML syntax
+      verified, exact step sequence (install → generate → migrate → seed
+      → lint → format → type-check → build → unit → e2e → prisma
+      validate/status) reproduced locally end-to-end, all green; no
+      workflow change needed
 
 ## Portfolio
 - [ ] Final audit re-run (Phase 26)

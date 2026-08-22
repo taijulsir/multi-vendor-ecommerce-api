@@ -40,6 +40,13 @@ RUN npm ci --omit=dev
 
 COPY --from=build /app/dist ./dist
 
+# Run as the non-root `node` user the base image already provides
+# (uid/gid 1000) rather than the default root — standard container
+# hardening, no application code change required. `chown` happens before
+# the `USER` switch since only root can change ownership.
+RUN chown -R node:node /app
+USER node
+
 # Database migrations are a separate release step
 # (`npx prisma migrate deploy`), not run automatically on container
 # start — this image only runs the compiled application.

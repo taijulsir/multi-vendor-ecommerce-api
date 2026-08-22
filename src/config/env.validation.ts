@@ -1,3 +1,11 @@
+// HS256 (this app's configured JWT algorithm — see AuthModule's
+// `JwtModule.registerAsync`) wants at least 256 bits of key material;
+// 32 raw characters is the conventional, widely-used floor for a
+// secret used directly as an HMAC key (not itself a security guarantee,
+// but enough to reject a trivially weak value like "changeme" or "123"
+// at startup rather than silently signing tokens with it).
+const MIN_JWT_SECRET_LENGTH = 32;
+
 export function validateEnvironment(
   config: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -17,6 +25,20 @@ export function validateEnvironment(
     if (typeof value !== 'string' || value.trim() === '') {
       throw new Error(`Missing required environment variable: ${key}`);
     }
+  }
+
+  for (const key of ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET']) {
+    if ((config[key] as string).length < MIN_JWT_SECRET_LENGTH) {
+      throw new Error(
+        `${key} must be at least ${MIN_JWT_SECRET_LENGTH} characters`,
+      );
+    }
+  }
+
+  if (config.JWT_ACCESS_SECRET === config.JWT_REFRESH_SECRET) {
+    throw new Error(
+      'JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must not be the same value',
+    );
   }
 
   const port = Number(config.PORT ?? 3000);

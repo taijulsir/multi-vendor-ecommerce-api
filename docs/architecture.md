@@ -559,6 +559,16 @@ Only example values belong in:
 
 Actual development and production secrets belong in environment-specific secret management.
 
+**JWT secret strength (Phase 24).** `env.validation.ts` rejects
+`JWT_ACCESS_SECRET`/`JWT_REFRESH_SECRET` shorter than 32 characters, and
+rejects the two being equal to each other — both enforced at startup, not
+merely documented convention. Every other module (`PrismaService`,
+`RedisService`, `JwtModule`, `BullModule`, `LocalFileStorageService`, and
+now `src/main.ts`'s `PORT` read) resolves its configuration exclusively
+through `ConfigService` — confirmed by a full-codebase audit that found
+and fixed the one remaining direct `process.env` access outside this
+layer.
+
 ---
 
 # 13. API Prefix
@@ -1661,6 +1671,9 @@ Docker Compose                 ✅
 Dependency security audit      ✅
 Global exception filter        ✅
 Graceful shutdown              ✅
+Non-root Docker runtime        ✅
+TypeScript strict-family flags ✅
+ESLint strict rules            ✅
 ```
 
 The business modules will be implemented incrementally according to the project implementation plan.
@@ -1760,14 +1773,27 @@ inside this architectural reference. Status as of this note:
   a safe, detail-free 500 for whatever previously would have reached
   NestJS's own default (un-branded, but already-safe per
   `docs/project-completion-audit.md` Part 5 §7) handler.
+* **Implemented (Phase 24):** production/engineering hardening audit —
+  also not an ADR, no business rule involved. Findings and fixes are
+  itemized in `docs/remaining-architecture-plan.md`'s Phase 24 status
+  note rather than duplicated here; in summary: JWT secret strength
+  validation (§12), the non-root Docker runtime user, `tsconfig.json`
+  strict-family flags and full ESLint strictness restoration (both
+  audited against the real codebase first — zero application code
+  changed as a result), and a handful of small dependency/git-hygiene
+  fixes (`dotenv` promoted to an explicit dependency, `src/generated/`
+  excluded from lint/format, `.gitignore`/`.dockerignore` broadened).
+  Nothing here changes any existing business behavior, HTTP contract, or
+  ownership/authorization rule.
 
 None of these decisions change this document's existing architectural
 principles (§18-26) — they are applications of those principles to
 domains that either now have controllers (ADR-1/2/3) or don't yet
 (ADR-4), per the "existence of a domain does not mean its implementation
-must be created immediately" rule in §5. Phase 23 is the one exception
-to "domain-application" framing — it is cross-cutting infrastructure, not
-a new domain, which is why it isn't numbered as an ADR.
+must be created immediately" rule in §5. Phases 23-24 are the exception
+to "domain-application" framing — both are cross-cutting infrastructure/
+engineering-quality work, not a new domain, which is why neither is
+numbered as an ADR.
 
 ````
 

@@ -17,3 +17,7 @@ postman
 docs
 test
 README.md
+# Local file storage (Phase 22) dev-default upload directory — never
+# part of the build context; the Dockerfile's selective COPY commands
+# already wouldn't include it, this is defense-in-depth.
+storage

@@ -13,7 +13,7 @@ import { AllExceptionsFilter } from './all-exceptions.filter';
 describe('AllExceptionsFilter', () => {
   let filter: AllExceptionsFilter;
   const jsonMock = jest.fn();
-  const statusMock = jest.fn(() => ({ json: jsonMock }));
+  const statusMock = jest.fn((status: number) => ({ status, json: jsonMock }));
 
   const buildHost = (): ArgumentsHost =>
     ({
@@ -159,7 +159,7 @@ describe('AllExceptionsFilter', () => {
   describe('Unknown exceptions', () => {
     it('maps an unrecognized Error to a safe generic 500 with no stack trace in the response', () => {
       const exception = new Error(
-        'ENOENT: no such file or directory, open \'/etc/secret-config.json\'',
+        "ENOENT: no such file or directory, open '/etc/secret-config.json'",
       );
 
       filter.catch(exception, buildHost());
@@ -186,7 +186,9 @@ describe('AllExceptionsFilter', () => {
     });
 
     it('safely handles a thrown string (non-Error value) without crashing', () => {
-      expect(() => filter.catch('a plain string was thrown', buildHost())).not.toThrow();
+      expect(() =>
+        filter.catch('a plain string was thrown', buildHost()),
+      ).not.toThrow();
       expect(capturedStatus()).toBe(500);
     });
 
@@ -219,7 +221,11 @@ describe('AllExceptionsFilter', () => {
       filter.catch(new Error('unexpected'), buildHost());
       const body = capturedBody() as Record<string, unknown>;
 
-      expect(Object.keys(body).sort()).toEqual(['error', 'message', 'statusCode']);
+      expect(Object.keys(body).sort()).toEqual([
+        'error',
+        'message',
+        'statusCode',
+      ]);
     });
   });
 });

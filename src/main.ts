@@ -1,12 +1,20 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  // Phase 24: read through the same validated ConfigService every other
+  // module already uses (PrismaService, RedisService, JwtModule,
+  // BullModule, LocalFileStorageService) — `env.validation.ts` already
+  // coerces/validates `PORT` into a number; reading `process.env.PORT`
+  // directly here bypassed that validation and was the one remaining
+  // direct `process.env` access outside the config layer.
+  const configService = app.get(ConfigService);
 
   // Phase 23: wires OS SIGTERM/SIGINT through to Nest's own lifecycle —
   // `app.close()` (which already runs on every test's `afterAll`, and
@@ -83,7 +91,7 @@ async function bootstrap() {
   SwaggerModule.setup('docs', app, document, {
     useGlobalPrefix: true,
   });
-  await app.listen(process.env.PORT ?? 3000);
+  await app.listen(configService.getOrThrow<number>('PORT'));
 }
 
 void bootstrap();

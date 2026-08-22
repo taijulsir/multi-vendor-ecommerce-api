@@ -18,7 +18,10 @@ import {
   StorageFileNotFoundError,
 } from '../../storage/storage.service';
 import { CreateProductImageDto } from './dto/create-product-image.dto';
-import { mimeTypeForExtension, validateImageFile } from './utils/image-validation';
+import {
+  mimeTypeForExtension,
+  validateImageFile,
+} from './utils/image-validation';
 import {
   toPublicProductImage,
   type PublicProductImage,
@@ -162,10 +165,7 @@ export class ProductImagesService {
         throw new NotFoundException(IMAGE_NOT_FOUND_MESSAGE);
       }
 
-      const isAdmin = await this.authorizationService.hasRole(
-        user.id,
-        'ADMIN',
-      );
+      const isAdmin = await this.authorizationService.hasRole(user.id, 'ADMIN');
 
       if (!isAdmin) {
         const vendorId = await this.ownershipService.getVendorIdForUser(

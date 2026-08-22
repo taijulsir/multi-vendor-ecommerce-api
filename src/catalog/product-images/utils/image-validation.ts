@@ -20,8 +20,7 @@ const ALLOWED_MIME_TO_EXTENSION: Record<string, string> = {
 // rather than silently treated as unquestionable).
 export const MAX_IMAGE_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 
-const INVALID_IMAGE_MESSAGE =
-  'Only JPEG, PNG, and WebP images are accepted.';
+const INVALID_IMAGE_MESSAGE = 'Only JPEG, PNG, and WebP images are accepted.';
 
 export interface ValidatedImage {
   mimeType: string;
@@ -35,7 +34,9 @@ export interface ValidatedImage {
  * `import()` is required: `file-type` ships as an ESM-only package and
  * this project compiles to CommonJS.
  */
-export async function validateImageFile(buffer: Buffer): Promise<ValidatedImage> {
+export async function validateImageFile(
+  buffer: Buffer,
+): Promise<ValidatedImage> {
   const { fileTypeFromBuffer } = await import('file-type');
   const detected = await fileTypeFromBuffer(buffer);
   const extension = detected

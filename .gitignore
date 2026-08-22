@@ -35,8 +35,13 @@ lerna-debug.log*
 !.vscode/launch.json
 !.vscode/extensions.json
 
-# dotenv environment variable files
+# dotenv environment variable files — broadened to any `.env.*` variant
+# (previously only the four Nest-CLI-conventional names below were
+# listed; `.env.staging`, `.env.qa`, etc. would have been trackable by
+# accident). Matches the pattern .dockerignore already used.
 .env
+.env.*
+!.env.example
 .env.development.local
 .env.test.local
 .env.production.local

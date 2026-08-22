@@ -1,5 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { createReadStream, promises as fs, constants as fsConstants } from 'node:fs';
+import {
+  createReadStream,
+  promises as fs,
+  constants as fsConstants,
+} from 'node:fs';
 import type { ReadStream } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
 
@@ -51,8 +55,7 @@ export class LocalFileStorageService implements OnModuleInit {
 
   constructor(private readonly configService: ConfigService) {
     const configured =
-      this.configService.get<string>('FILE_STORAGE_DIR') ??
-      DEFAULT_STORAGE_DIR;
+      this.configService.get<string>('FILE_STORAGE_DIR') ?? DEFAULT_STORAGE_DIR;
     this.rootDir = resolve(process.cwd(), configured);
   }
 
