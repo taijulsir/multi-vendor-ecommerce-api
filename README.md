@@ -21,6 +21,7 @@ This is **not** a distributed/microservices system, and does **not** integrate a
 - [Setup Guide](#setup-guide)
 - [Environment Variables](#environment-variables)
 - [Docker](#docker)
+- [Production Deployment](#production-deployment)
 - [Testing](#testing)
 - [Security](#security)
 - [Engineering Highlights](#engineering-highlights)
@@ -198,9 +199,10 @@ The full ordered schema-implementation plan (11-domain dependency graph, migrati
 - **Narrative API walkthrough**: [`docs/API.md`](docs/API.md)
 - **Architecture record**: [`docs/architecture.md`](docs/architecture.md) / [`docs/architecture-diagram.md`](docs/architecture-diagram.md)
 - **Postman collection**: [`postman/multi-vendor-ecommerce-api.postman_collection.json`](postman/multi-vendor-ecommerce-api.postman_collection.json) (17 folders / 56 requests)
-- **Postman environment**: [`postman/multi-vendor-ecommerce-api.postman_environment.json`](postman/multi-vendor-ecommerce-api.postman_environment.json) (18 variables)
+- **Postman environment (local)**: [`postman/multi-vendor-ecommerce-api.postman_environment.json`](postman/multi-vendor-ecommerce-api.postman_environment.json) (18 variables)
+- **Postman environment (production template)**: [`postman/multi-vendor-ecommerce-api.postman_environment.production.example.json`](postman/multi-vendor-ecommerce-api.postman_environment.production.example.json) — identical variable set, `baseUrl` left as an explicit `https://YOUR_DOMAIN` placeholder to fill in once deployed (see [`docs/deployment.md`](docs/deployment.md))
 
-No live/hosted Swagger URL exists — this project is not currently deployed; run it locally per the [Setup Guide](#setup-guide) below.
+**Live deployment: not yet deployed.** No live URL, hosted Swagger, or hosted API exists yet — this section will be updated with the real URL once deployment (tracked in [`docs/deployment.md`](docs/deployment.md) and [`PRODUCTION_CHECKLIST.md`](PRODUCTION_CHECKLIST.md)) is complete. Run it locally per the [Setup Guide](#setup-guide) below in the meantime.
 
 Login/register/create-variant/upload-image/checkout/create-payment/create-refund requests in the Postman collection include test scripts that auto-capture `accessToken`, `refreshToken`, and the relevant resource id into the environment. `adminAccessToken` must still be set **manually** (no self-service admin-provisioning endpoint exists — assign the `ADMIN` role directly via Prisma, then log in as that user).
 
@@ -265,7 +267,7 @@ http://localhost:3000/api/docs
 
 ### Postman
 
-Import both files from [`postman/`](postman/) into Postman, select the environment, and run requests roughly top-to-bottom per folder — most write-capturing test scripts depend on an earlier request in the same folder having already run.
+Import the collection and the local environment from [`postman/`](postman/) into Postman, select the environment, and run requests roughly top-to-bottom per folder — most write-capturing test scripts depend on an earlier request in the same folder having already run. Once deployed, import `multi-vendor-ecommerce-api.postman_environment.production.example.json` as a second environment and replace its placeholder `baseUrl` with the real deployed domain to run the same collection against production.
 
 ---
 
@@ -310,7 +312,15 @@ docker run -p 3000:3000 --env-file .env multi-vendor-ecommerce-api   # point DAT
 
 Both the build and the resulting image have been run-verified directly (not just written): `docker build .` succeeds, and the container — run against the `docker-compose.yml` PostgreSQL/Redis — starts cleanly with `/api/health` reporting `{"database":"up","redis":"up"}`.
 
-No Kubernetes manifests or cloud deployment configuration exist in this repository — actual deployment is out of scope for this phase.
+No Kubernetes manifests or cloud deployment configuration exist in this repository, and none are planned — the intended deployment target is a single VPS running this same Docker image behind Nginx, documented step-by-step in [`docs/deployment.md`](docs/deployment.md) (not yet executed as of this writing — see that document's own status note).
+
+---
+
+## Production Deployment
+
+- **Full step-by-step guide**: [`docs/deployment.md`](docs/deployment.md) — VPS provisioning, PostgreSQL/Redis, Docker, Nginx, HTTPS, health verification, backups, rollback; written directly from this repository's own `Dockerfile`/`docker-compose.yml`/environment validation, not a generic template.
+- **Execution checklist**: [`PRODUCTION_CHECKLIST.md`](PRODUCTION_CHECKLIST.md) — the practical, checkbox-driven sequence for taking this from a cloned repository to a verified live deployment.
+- **Status**: not yet deployed. The target is a single VPS running this repository's existing Docker image behind Nginx — no Kubernetes, no managed cloud services, no multi-region setup, matching the actual scope of this project (see [Docker](#docker) above).
 
 ---
 
