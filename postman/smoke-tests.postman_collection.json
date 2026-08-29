@@ -1,0 +1,152 @@
+{
+	"info": {
+		"name": "Multi-Vendor E-Commerce API - Smoke Tests",
+		"description": "Fast, dependency-light post-deployment smoke suite. Deliberately excludes anything requiring an ADMIN account (vendor verification/activation, category/product creation, cart/checkout, payments) so it stays fast and reliable enough to run after every deployment. Run the full collection (Multi-Vendor-E-Commerce-API.production.postman_collection.json) for end-to-end business-flow coverage. Exits non-zero on any failed assertion (Newman default) -- safe to wire into CI/CD.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "HTTPS API is reachable",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": { "raw": "{{baseUrl}}/api/health", "host": ["{{baseUrl}}"], "path": ["api", "health"] },
+				"description": "Baseline reachability check -- also exercised in detail by the next request; kept separate so a DNS/TLS/network failure is reported distinctly from an application-level health failure."
+			},
+			"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+				"pm.test(\"API is reachable over HTTPS\", function () { pm.expect(pm.response.code).to.be.oneOf([200]); });"
+			] } }],
+			"response": []
+		},
+		{
+			"name": "Health reports database and redis up",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": { "raw": "{{baseUrl}}/api/health", "host": ["{{baseUrl}}"], "path": ["api", "health"] },
+				"description": "GET /api/health genuinely queries PostgreSQL (SELECT 1) and pings Redis (src/health/health.service.ts) -- not a static 200."
+			},
+			"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+				"pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+				"pm.test(\"Response is JSON\", function () { pm.response.to.be.json; });",
+				"const body = pm.response.json();",
+				"pm.test(\"status is ok\", function () { pm.expect(body.status).to.eql('ok'); });",
+				"pm.test(\"database is up\", function () { pm.expect(body.services.database).to.eql('up'); });",
+				"pm.test(\"redis is up\", function () { pm.expect(body.services.redis).to.eql('up'); });"
+			] } }],
+			"response": []
+		},
+		{
+			"name": "Swagger UI is reachable",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": { "raw": "{{baseUrl}}/api/docs", "host": ["{{baseUrl}}"], "path": ["api", "docs"] }
+			},
+			"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+				"pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });"
+			] } }],
+			"response": []
+		},
+		{
+			"name": "OpenAPI JSON is reachable and well-formed",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": { "raw": "{{baseUrl}}/api/docs-json", "host": ["{{baseUrl}}"], "path": ["api", "docs-json"] }
+			},
+			"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+				"pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+				"pm.test(\"Response is JSON\", function () { pm.response.to.be.json; });",
+				"pm.test(\"Has paths\", function () { pm.expect(pm.response.json()).to.have.property('paths'); });"
+			] } }],
+			"response": []
+		},
+		{
+			"name": "Public endpoint - list categories",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": { "raw": "{{baseUrl}}/api/categories", "host": ["{{baseUrl}}"], "path": ["api", "categories"] },
+				"description": "Representative PUBLIC endpoint (no auth) -- src/catalog/categories/categories.controller.ts GET has no guard."
+			},
+			"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+				"pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+				"pm.test(\"Response is an array\", function () { pm.expect(Array.isArray(pm.response.json())).to.be.true; });"
+			] } }],
+			"response": []
+		},
+		{
+			"name": "Authentication works - register",
+			"request": {
+				"method": "POST",
+				"header": [{ "key": "Content-Type", "value": "application/json" }],
+				"url": { "raw": "{{baseUrl}}/api/auth/register", "host": ["{{baseUrl}}"], "path": ["api", "auth", "register"] },
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"email\": \"smoke-test+{{$randomInt}}@example.com\",\n  \"password\": \"StrongPassw0rd!\",\n  \"firstName\": \"Smoke\",\n  \"lastName\": \"Test\"\n}",
+					"options": { "raw": { "language": "json" } }
+				},
+				"description": "Creates a throwaway account every run (random suffix) so repeated smoke runs never collide on a duplicate email."
+			},
+			"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+				"pm.test(\"Status code is 201\", function () { pm.response.to.have.status(201); });",
+				"const body = pm.response.json();",
+				"pm.test(\"Response has id and email\", function () { pm.expect(body).to.have.property('id'); pm.expect(body).to.have.property('email'); });",
+				"pm.environment.set('smokeTestEmail', body.email);"
+			] } }],
+			"response": []
+		},
+		{
+			"name": "Authentication works - login",
+			"request": {
+				"method": "POST",
+				"header": [{ "key": "Content-Type", "value": "application/json" }],
+				"url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "auth", "login"] },
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"email\": \"{{smokeTestEmail}}\",\n  \"password\": \"StrongPassw0rd!\"\n}",
+					"options": { "raw": { "language": "json" } }
+				}
+			},
+			"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+				"pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+				"const body = pm.response.json();",
+				"pm.test(\"Response has accessToken\", function () { pm.expect(body).to.have.property('accessToken'); });",
+				"pm.environment.set('smokeAccessToken', body.accessToken);"
+			] } }],
+			"response": []
+		},
+		{
+			"name": "Representative authenticated endpoint",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": { "raw": "{{baseUrl}}/api/auth/me", "host": ["{{baseUrl}}"], "path": ["api", "auth", "me"] },
+				"auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{smokeAccessToken}}", "type": "string" }] },
+				"description": "Proves the JWT issued at login is actually accepted by a protected route (JwtAuthGuard + JwtStrategy), not just that login itself returned 200."
+			},
+			"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+				"pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+				"const body = pm.response.json();",
+				"pm.test(\"Returns the logged-in user\", function () { pm.expect(body.email).to.eql(pm.environment.get('smokeTestEmail')); });"
+			] } }],
+			"response": []
+		},
+		{
+			"name": "Unauthenticated protected route is rejected",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": { "raw": "{{baseUrl}}/api/auth/me", "host": ["{{baseUrl}}"], "path": ["api", "auth", "me"] },
+				"auth": { "type": "noauth" },
+				"description": "One fast security regression check: a route that must never be reachable without a token stays that way."
+			},
+			"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+				"pm.test(\"Status code is 401\", function () { pm.response.to.have.status(401); });"
+			] } }],
+			"response": []
+		}
+	],
+	"variable": []
+}

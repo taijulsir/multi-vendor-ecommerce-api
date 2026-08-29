@@ -17,7 +17,11 @@
     "test:watch": "NODE_OPTIONS=--experimental-vm-modules jest --watch",
     "test:cov": "NODE_OPTIONS=--experimental-vm-modules jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "NODE_OPTIONS=--experimental-vm-modules jest --config ./test/jest-e2e.json"
+    "test:e2e": "NODE_OPTIONS=--experimental-vm-modules jest --config ./test/jest-e2e.json",
+    "test:smoke": "newman run postman/smoke-tests.postman_collection.json -e postman/Production.postman_environment.json --reporters cli",
+    "test:api": "newman run postman/Multi-Vendor-E-Commerce-API.production.postman_collection.json -e postman/Production.postman_environment.json --working-dir postman --reporters cli",
+    "test:api:local": "newman run postman/multi-vendor-ecommerce-api.postman_collection.json -e postman/multi-vendor-ecommerce-api.postman_environment.json --working-dir postman --reporters cli",
+    "postman:build": "node postman/scripts/build-final-collection.js"
   },
   "dependencies": {
     "@nestjs/bullmq": "^11.0.5",
@@ -63,6 +67,7 @@
     "eslint-plugin-prettier": "^5.2.2",
     "globals": "^16.0.0",
     "jest": "^30.0.0",
+    "newman": "^6.2.2",
     "prettier": "^3.4.2",
     "prisma": "^7.9.1",
     "source-map-support": "^0.5.21",

@@ -72,3 +72,10 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 /.claude/
 /.windsurf/
 /skills-lock.json
+
+# Newman run artifacts (raw captures used to build the final Postman
+# collection's saved examples -- see postman/scripts/build-final-collection.js).
+# Intermediate/regeneratable, and can contain unsanitized tokens before
+# the sanitization pass runs -- never committed.
+/postman/.newman-capture/
+/newman/
