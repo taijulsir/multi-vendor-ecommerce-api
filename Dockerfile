@@ -29,6 +29,20 @@ RUN npm run build
 # (which already includes the generated Prisma Client under
 # dist/src/generated/prisma — see tsconfig.json, generated/ is not
 # excluded from the TypeScript compilation).
+#
+# Also carries the `prisma` CLI itself, `prisma.config.ts`, and
+# `prisma/` (schema + migrations) — not needed by the running app
+# (which only imports @prisma/client + @prisma/adapter-pg, the actual
+# runtime driver, both already regular dependencies), but needed to run
+# `npx prisma migrate deploy` as a release step *against this exact
+# image* (CD, .github/workflows/cd.yml, and docs/deployment.md's manual
+# procedure both do this) rather than requiring a separate migration
+# image with a different dependency set than what's actually deployed.
+# `prisma` and `dotenv` (prisma.config.ts's own `import 'dotenv/config'`)
+# are therefore real `dependencies` in package.json, not devDependencies
+# — `npm ci --omit=dev` below would otherwise silently omit both and
+# `prisma migrate deploy` would fail inside this image with no local
+# `prisma` binary and no schema to read.
 # ---------------------------------------------------------------------------
 FROM node:22-alpine AS runtime
 
@@ -39,6 +53,8 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
 COPY --from=build /app/dist ./dist
+COPY prisma.config.ts ./
+COPY prisma ./prisma
 
 # Run as the non-root `node` user the base image already provides
 # (uid/gid 1000) rather than the default root — standard container

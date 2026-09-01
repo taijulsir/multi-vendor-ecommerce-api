@@ -1,0 +1,71 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ecommerce
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: multi_vendor_ecommerce
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ecommerce -d multi_vendor_ecommerce"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    # IMAGE_TAG is the immutable deploy selector -- the CD workflow
+    # (.github/workflows/cd.yml) always sets it to
+    # ghcr.io/taijulsir/multi-vendor-ecommerce-api:<commit-sha> before
+    # running `docker compose up`, never :latest. The fallback below
+    # only exists so `docker compose config`/`up` don't hard-fail when
+    # IMAGE_TAG isn't set (e.g. local validation, a manual first run) --
+    # it is not what production deploys actually use.
+    image: ${IMAGE_TAG:-ghcr.io/taijulsir/multi-vendor-ecommerce-api:latest}
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://ecommerce:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/multi_vendor_ecommerce?schema=public
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      FILE_STORAGE_DIR: /app/storage/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3010:3000"
+    volumes:
+      - /srv/multi-vendor-ecommerce-api/storage:/app/storage
+    healthcheck:
+      # wget (not curl) -- node:22-alpine's busybox ships wget, not curl.
+      # Hits the same real database/Redis-checking endpoint CD later
+      # verifies publicly (src/health/health.service.ts) -- a container
+      # only reports healthy once it can actually reach both, not once
+      # the process has merely started listening.
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000/api/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  postgres_data:
+  redis_data:

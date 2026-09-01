@@ -194,17 +194,15 @@ The full ordered schema-implementation plan (11-domain dependency graph, migrati
 
 ## API Documentation
 
-- **Swagger UI** (live, generated from the running application, all 54 routes): `http://localhost:3000/api/docs`
-- **OpenAPI JSON**: `http://localhost:3000/api/docs-json`
+- **Swagger UI (production, live)**: [`https://e-commerce.api.taijul.dev/api/docs`](https://e-commerce.api.taijul.dev/api/docs) — all 54 routes, generated from the running application
+- **Swagger UI (local)**: `http://localhost:3000/api/docs`
 - **Narrative API walkthrough**: [`docs/API.md`](docs/API.md)
 - **Architecture record**: [`docs/architecture.md`](docs/architecture.md) / [`docs/architecture-diagram.md`](docs/architecture-diagram.md)
-- **Postman collection**: [`postman/multi-vendor-ecommerce-api.postman_collection.json`](postman/multi-vendor-ecommerce-api.postman_collection.json) (17 folders / 56 requests)
-- **Postman environment (local)**: [`postman/multi-vendor-ecommerce-api.postman_environment.json`](postman/multi-vendor-ecommerce-api.postman_environment.json) (18 variables)
-- **Postman environment (production template)**: [`postman/multi-vendor-ecommerce-api.postman_environment.production.example.json`](postman/multi-vendor-ecommerce-api.postman_environment.production.example.json) — identical variable set, `baseUrl` left as an explicit `https://YOUR_DOMAIN` placeholder to fill in once deployed (see [`docs/deployment.md`](docs/deployment.md))
+- **Postman — final collection to import**: [`postman/Multi-Vendor-E-Commerce-API.production.postman_collection.json`](postman/Multi-Vendor-E-Commerce-API.production.postman_collection.json) — 66 requests, every one carrying a genuine, sanitized response example captured live from production (not fabricated) — plus [`postman/Production.postman_environment.json`](postman/Production.postman_environment.json)
+- **Postman — fast post-deploy check**: [`postman/smoke-tests.postman_collection.json`](postman/smoke-tests.postman_collection.json) (`npm run test:smoke`) — the same suite CD runs after every production deploy
+- **How the Postman tooling works, admin test provisioning, regenerating examples**: [`docs/postman-testing.md`](docs/postman-testing.md)
 
-**Live deployment: not yet deployed.** No live URL, hosted Swagger, or hosted API exists yet — this section will be updated with the real URL once deployment (tracked in [`docs/deployment.md`](docs/deployment.md) and [`PRODUCTION_CHECKLIST.md`](PRODUCTION_CHECKLIST.md)) is complete. Run it locally per the [Setup Guide](#setup-guide) below in the meantime.
-
-Login/register/create-variant/upload-image/checkout/create-payment/create-refund requests in the Postman collection include test scripts that auto-capture `accessToken`, `refreshToken`, and the relevant resource id into the environment. `adminAccessToken` must still be set **manually** (no self-service admin-provisioning endpoint exists — assign the `ADMIN` role directly via Prisma, then log in as that user).
+Register/Login/vendor/shop/category/product/checkout/payment/refund requests in the collection auto-capture ids and tokens into the environment via test scripts — nothing is manually copied between requests. `adminAccessToken` needs one manual login step against a pre-provisioned ADMIN account (no self-service admin-provisioning endpoint exists by design) — see `docs/postman-testing.md` for exactly how.
 
 ---
 
@@ -318,9 +316,16 @@ No Kubernetes manifests or cloud deployment configuration exist in this reposito
 
 ## Production Deployment
 
-- **Full step-by-step guide**: [`docs/deployment.md`](docs/deployment.md) — VPS provisioning, PostgreSQL/Redis, Docker, Nginx, HTTPS, health verification, backups, rollback; written directly from this repository's own `Dockerfile`/`docker-compose.yml`/environment validation, not a generic template.
-- **Execution checklist**: [`PRODUCTION_CHECKLIST.md`](PRODUCTION_CHECKLIST.md) — the practical, checkbox-driven sequence for taking this from a cloned repository to a verified live deployment.
-- **Status**: not yet deployed. The target is a single VPS running this repository's existing Docker image behind Nginx — no Kubernetes, no managed cloud services, no multi-region setup, matching the actual scope of this project (see [Docker](#docker) above).
+- **Live API**: [`https://e-commerce.api.taijul.dev`](https://e-commerce.api.taijul.dev) — a single VPS, Docker Compose, Nginx, Let's Encrypt HTTPS. No Kubernetes, no managed cloud services, no multi-region setup — matching the actual scope of this project (see [Docker](#docker) above).
+- **Live Swagger**: [`https://e-commerce.api.taijul.dev/api/docs`](https://e-commerce.api.taijul.dev/api/docs)
+- **Full step-by-step guide**: [`docs/deployment.md`](docs/deployment.md) — VPS provisioning, PostgreSQL/Redis, Docker, Nginx, HTTPS, health verification, backups, rollback, and the CI/CD pipeline below; written directly from this repository's own `Dockerfile`/`docker-compose.prod.yml`/environment validation, not a generic template.
+- **Execution checklist**: [`PRODUCTION_CHECKLIST.md`](PRODUCTION_CHECKLIST.md)
+
+### CI/CD
+
+`development` → PR → `main` → [CI](.github/workflows/ci.yml) (lint, type-check, build, unit + e2e tests, Prisma validate) → on success, [CD](.github/workflows/cd.yml) builds the image, pushes an immutable `ghcr.io/taijulsir/multi-vendor-ecommerce-api:<commit-sha>` tag to GHCR, SSHes into the VPS, **backs up the database**, runs `prisma migrate deploy`, rolls out the new container, then verifies `/api/health` and the [Postman smoke suite](postman/smoke-tests.postman_collection.json) before calling the deploy successful.
+
+CD triggers **only** after CI succeeds **only** for `main` (via `workflow_run`, never a raw `push` trigger) — a `development` push never reaches production, and concurrent `main` deploys queue rather than race. Full architecture, required GitHub Secrets, and the rollback procedure: [`docs/deployment.md`](docs/deployment.md#26-cicd-automated-production-deployment).
 
 ---
 

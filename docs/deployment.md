@@ -2,9 +2,9 @@
 
 A complete, from-scratch manual deployment guide for the Multi-Vendor E-Commerce API, based directly on this repository's actual `Dockerfile`, `docker-compose.yml`, `src/config/env.validation.ts`, and application source — not a generic template. Where the repository doesn't prescribe something (a specific VPS provider, a specific directory path, a specific domain), this guide says so explicitly and uses a clearly-labeled example instead of presenting invented specifics as fact.
 
-**This project has not yet been deployed** (see [`docs/experience-level-readiness-audit.md`](experience-level-readiness-audit.md), Section 8/24). This guide is what you would follow to do that; nothing here has been executed against a real server.
+**This project is deployed and live**: [`https://e-commerce.api.taijul.dev`](https://e-commerce.api.taijul.dev). Sections 1–25 below are the original manual, from-scratch bootstrap procedure — kept as-is because it's still the accurate reference for what's actually running on the VPS (the exact `docker-compose.prod.yml`, Nginx config, directory layout, backup mechanism) and the right procedure for disaster recovery or setting up a fresh environment. **Ongoing deployments no longer follow these steps by hand** — every push to `main` now deploys automatically; see [Section 26, CI/CD](#26-cicd-automated-production-deployment) for that pipeline, which supersedes Sections 5/9's manual `docker build`/`docker run` steps for day-to-day use.
 
-**Target VPS is shared, not dedicated.** The VPS this project will deploy to already runs at least one other application (an existing PM2-managed Node process) and has already been through a security incident that was investigated and remediated independently of this project. Two things follow from that, expanded in [Section 4](#4-server-initial-setup) and [Section 11](#11-nginx):
+**Target VPS is shared, not dedicated.** The VPS this project deploys to also runs at least one other application (an existing PM2-managed Node process) and has already been through a security incident that was investigated and remediated independently of this project. Two things follow from that, expanded in [Section 4](#4-server-initial-setup) and [Section 11](#11-nginx):
 
 - **Port conflicts are a real possibility, not a hypothetical** — check what's already bound before assuming 80/443/3000/5432/6379 are free.
 - **Nginx (if already installed for the existing app) needs a new server block for this domain, not a fresh install** — check before installing.
@@ -40,6 +40,7 @@ This guide does not repeat, re-verify, or second-guess that prior incident's rem
 23. [Rollback](#23-rollback)
 24. [Production vs. Portfolio](#24-production-vs-portfolio)
 25. [Final Deployment Checklist](#25-final-deployment-checklist)
+26. [CI/CD (Automated Production Deployment)](#26-cicd-automated-production-deployment)
 
 ---
 
@@ -918,17 +919,18 @@ docker compose -f docker-compose.prod.yml up -d
 
 A safe, basic rollback strategy — no destructive database commands assumed safe by default.
 
-**Application code rollback** (straightforward — this is just redeploying an older, known-good state):
+**Application code rollback**: superseded by [Section 26's](#26-cicd-automated-production-deployment) immutable GHCR SHA-tag scheme — every deploy since CI/CD was introduced is pullable by its exact commit SHA, so rollback is never a rebuild, just re-pointing `IMAGE_TAG` at a previous, already-built, already-tested image:
 
 ```bash
-git log --oneline   # find the last known-good commit
-git checkout <previous-good-commit>
-docker build -t multi-vendor-ecommerce-api:previous .
-# update docker-compose.prod.yml's app image tag to :previous, then:
-docker compose -f docker-compose.prod.yml up -d app
+ssh <deploy-user>@<vps-host>
+cd /srv/multi-vendor-ecommerce-api
+export IMAGE_TAG=ghcr.io/taijulsir/multi-vendor-ecommerce-api:<previous-known-good-sha>
+docker compose --env-file .env.production -f docker-compose.prod.yml pull app
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d app
+curl -s http://127.0.0.1:3010/api/health
 ```
 
-Keeping the previous image tagged (`:previous`, or better, a real version tag per deploy) before building `:latest` again is the simplest safety net — you can revert to it instantly without rebuilding.
+See Section 26's own "Rollback" subsection for the full procedure, including how to find a known-good SHA and the migration-rollback caveat below.
 
 **Database/migration rollback — the honest limitation:** Prisma does not provide an automatic "undo the last migration" command. `prisma migrate deploy` only ever applies migrations forward, in order. Rolling back a schema change means one of:
 
@@ -991,3 +993,104 @@ This is a genuine, honestly-scoped portfolio/MVP deployment — real infrastruct
 [ ] Logs verified (Section 20)
 [ ] Deployment documentation reviewed (this document)
 ```
+
+---
+
+## 26. CI/CD (Automated Production Deployment)
+
+Sections 1–25 above are the manual bootstrap procedure. This section documents the automated pipeline that has replaced manual deploys for day-to-day use — [`.github/workflows/cd.yml`](../.github/workflows/cd.yml), extending the existing CI ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml), untouched — every check it already ran still runs, this only adds what happens *after* it succeeds).
+
+### Architecture
+
+```
+development ──(PR)──> main ──push──> CI (ci.yml)
+                                        │ lint, type-check, build,
+                                        │ unit + e2e tests, prisma
+                                        │ validate/migrate status
+                                        ▼
+                                  success, on main?
+                                        │ (workflow_run, filtered
+                                        │  to branches: [main])
+                                        ▼
+                              CD (cd.yml) ── gate ── validate-compose
+                                        │
+                                        ▼
+                              build-and-push (GHCR, SHA-tagged)
+                                        │
+                                        ▼
+                              deploy (SSH to VPS):
+                                1. backup (systemd unit)
+                                2. pull exact image
+                                3. prisma migrate deploy
+                                4. docker compose up -d --wait app
+                                5. container-level health check
+                                        │
+                                        ▼
+                              verify: public HTTPS health check
+                                       + Postman smoke suite
+```
+
+**Trigger, precisely**: `cd.yml` uses `on: workflow_run: workflows: ["CI"], types: [completed], branches: [main]`, gated by `if: github.event.workflow_run.conclusion == 'success'` on its first job. This is deliberately *not* a `push` trigger — a `workflow_run` event fires only after the named upstream workflow finishes, and its `branches:` filter matches the branch that triggered *that* run, not CD's own ref. A `development` push triggers CI (as it always has) but never triggers CD, because CI's run there never satisfies `branches: [main]`. Every job checks out `github.event.workflow_run.head_sha` explicitly — the exact commit CI validated — never a possibly-since-moved `main` HEAD.
+
+**Concurrency**: `concurrency: { group: production-deploy, cancel-in-progress: false }` at the workflow level. A second `main` push while a deploy is running queues behind it instead of cancelling it mid-flight — a cancelled deploy could leave a half-applied migration or a stopped-but-not-restarted container, which `cancel-in-progress: false` makes structurally impossible.
+
+### GHCR image
+
+```
+ghcr.io/taijulsir/multi-vendor-ecommerce-api:<commit-sha>   ← what production actually runs
+ghcr.io/taijulsir/multi-vendor-ecommerce-api:latest         ← convenience tag only, never deployed from
+```
+
+Built via `docker/build-push-action`, authenticated with the workflow's own `GITHUB_TOKEN` (no separate registry credential) — `permissions: { packages: write }` at the workflow level is what grants that token push access. The package must be set to **Public visibility** once, manually, after the first push (GitHub → your profile → Packages → `multi-vendor-ecommerce-api` → Package settings → Change visibility) — this repository is already public and the image contains no runtime secrets (the Dockerfile's `DATABASE_URL` is a fixed build-time placeholder used only to satisfy `prisma generate`, never a real credential), so a public package lets the VPS `docker compose pull` with zero registry authentication instead of needing a second long-lived credential on the server. If you'd rather keep it private, the VPS needs `docker login ghcr.io` with a PAT scoped to `read:packages` — not what this pipeline does today.
+
+### Required GitHub Secrets
+
+| Secret | Used for |
+|---|---|
+| `VPS_HOST` | SSH target |
+| `VPS_USER` | SSH user (already in the `docker` group — no `sudo` needed for `docker`/`docker compose`) |
+| `VPS_SSH_PRIVATE_KEY` | Private half of a key whose public half is authorized on the VPS for `VPS_USER` |
+
+`GITHUB_TOKEN` is provided automatically by Actions (not a secret you configure) and is scoped by the workflow's own `permissions: { contents: read, packages: write }` block — it can push to GHCR and read this repo, nothing else. No production `DATABASE_URL`, `POSTGRES_PASSWORD`, or JWT secret is ever a GitHub Secret — they stay exclusively in `.env.production` on the VPS (see Section 6), which the deploy script references via `--env-file .env.production` but never reads the contents of. The backup command itself (`sudo systemctl start multi-vendor-ecommerce-db-backup.service`) is hardcoded directly in `cd.yml`, not a secret — it isn't confidential, it's an operational command, and hardcoding it means one less secret to configure/rotate/lose.
+
+### Deployment flow, in the exact order it happens
+
+1. **Backup** — `sudo systemctl start multi-vendor-ecommerce-db-backup.service`, the same root-managed systemd oneshot unit the daily timer already calls (`/usr/local/bin/multi-vendor-ecommerce-db-backup.sh`), already manually verified (exit 0, backup file confirmed created). `systemctl start` on a oneshot unit blocks until the script exits, so the deploy script's `set -euo pipefail` genuinely waits for the backup to finish — and aborts the whole deploy if it fails — before touching the database at all.
+2. **Pull** the exact SHA-tagged image (`docker compose pull app`) — nothing runs from it yet.
+3. **Migrate** — `docker compose run --rm app npx prisma migrate deploy`, in a throwaway container built from the image just pulled (`docker compose run` deliberately does not publish the service's normal ports, so this never conflicts with the still-running previous `app` container on `127.0.0.1:3010`). Never `migrate dev`, never `migrate reset`.
+4. **Roll out** — `docker compose up -d --wait app` replaces the running container with the migrated image and blocks until the new container's own Docker healthcheck (added in `docker-compose.prod.yml` — `wget --spider` against `/api/health` inside the container) reports healthy.
+5. **Container-level health check** — a `wget` retry loop against `127.0.0.1:3010` directly (bypassing Nginx/DNS/TLS), belt-and-suspenders alongside step 4's own `--wait`.
+6. **Public verification** (a separate job, `verify`, from the Actions runner, not the VPS) — the real client path: `https://e-commerce.api.taijul.dev/api/health`, retried until it reports `database: up` *and* `redis: up`, then the full [ADMIN-independent Postman smoke suite](#16-postman) (`npm run test:smoke` — 9 requests: reachability, health detail, Swagger UI, OpenAPI JSON, a public endpoint, register→login→authenticated-request, one 401 security check). No production admin credential is ever given to CI — the smoke suite was specifically designed not to need one (see [`docs/postman-testing.md`](../docs/postman-testing.md)).
+
+Any failure at any step — backup, migration, rollout, either health check, or the smoke suite — fails the workflow loudly (exit non-zero, visible in the Actions run) and stops there. Nothing auto-rolls-back; see Rollback below for the deliberate reason why.
+
+### Compose validation
+
+The production compose file intentionally requires `POSTGRES_PASSWORD` (`${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}`) — a real production password does **not** belong in `.env.example`, which stays a development template. It also references `env_file: .env.production` on the `app` service, which makes `docker compose config` fail outright if that file doesn't exist at all — true everywhere except the VPS itself. CD's `validate-compose` job handles both with explicit, obviously-fake placeholders that never touch a real secret:
+
+```bash
+touch .env.production   # satisfies env_file's existence check; stays empty, never committed
+POSTGRES_PASSWORD=ci-validate-placeholder-not-a-real-secret \
+IMAGE_TAG=ci-validate-placeholder \
+  docker compose -f docker-compose.prod.yml config --quiet
+rm -f .env.production
+```
+
+This only checks the file is syntactically valid YAML with all `${...}` references resolvable — it never starts a container, never touches the VPS, and runs before the image is even built, so a broken compose file is caught in seconds, not after a 2-minute Docker build. Run this exact command locally too, any time you edit `docker-compose.prod.yml` (an empty `.env.production` already sitting in your own working directory from local testing is harmless and already `.gitignore`d — see Section 6).
+
+### Rollback
+
+Deliberately simple, per the immutable-tag design — not a blue/green deployment, just re-pointing `IMAGE_TAG` at a previous, already-built image (already fully documented in [Section 23](#23-rollback); repeated here for completeness):
+
+```bash
+# On the VPS:
+cd /srv/multi-vendor-ecommerce-api
+export IMAGE_TAG=ghcr.io/taijulsir/multi-vendor-ecommerce-api:<previous-good-sha>
+docker compose --env-file .env.production -f docker-compose.prod.yml pull app
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d app
+curl -s http://127.0.0.1:3010/api/health
+```
+
+Find `<previous-good-sha>` from the GitHub Actions run history (the CD run before the bad one, or `git log --oneline main`) or from GHCR's own package version list.
+
+**This rolls back the application container only — it does not, and must not, roll back the database schema.** Prisma has no "undo the last migration" command; `migrate deploy` only ever applies forward. If the bad deploy included a migration that's incompatible with the previous application version, rolling back the container alone can leave the app running against a schema it doesn't expect. In that case: either write and apply a new forward migration that reverses the change (preferred), or restore from the pre-migration backup CD just took in step 1 (Section 19) — see Section 23's full discussion of this limitation, which applies identically here.
