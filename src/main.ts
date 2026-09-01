@@ -1,5 +1,6 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
@@ -7,7 +8,21 @@ import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Rate limiting (ThrottlerGuard, registered globally in AppModule) and
+  // anything else that keys off the caller's IP depend on `req.ip`
+  // reflecting the real client, not Nginx's own address. docs/
+  // deployment.md's Nginx config forwards exactly one hop
+  // (`proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for`), so
+  // Express is told to trust exactly one hop in front of it — enough to
+  // read that header, not so permissive that a client could prepend a
+  // spoofed address of its own and have it trusted. A request that
+  // reaches this process directly (local dev, e2e tests, or anything
+  // bypassing Nginx) carries no X-Forwarded-For at all, so this setting
+  // is inert for it — `req.ip` still falls back to the real socket
+  // address exactly as it did before.
+  app.set('trust proxy', 1);
   // Phase 24: read through the same validated ConfigService every other
   // module already uses (PrismaService, RedisService, JwtModule,
   // BullModule, LocalFileStorageService) — `env.validation.ts` already

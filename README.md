@@ -379,10 +379,10 @@ Implemented protections:
 - Sensitive field exclusion — `passwordHash` and refresh-token hashes are never serialized into any response.
 - Helmet baseline HTTP security headers.
 - Non-disclosing error responses — 401/403 never reveal *why* (nonexistent vs. not-yours are indistinguishable).
+- Rate limiting — `@nestjs/throttler`, applied globally via a single `APP_GUARD`, backed by Redis (not the package's default in-memory storage, so limits survive a redeploy — see `src/throttler/`) rather than a second, unrelated Redis connection. A generous default applies to every route; `POST /auth/login`, `POST /auth/register`, `POST /auth/refresh`, `POST /payments/webhook`, `POST /products/:productId/images`, and `POST /checkout` carry stricter, independently configurable limits. `main.ts` sets Express's `trust proxy` to exactly one hop, matching the single Nginx reverse proxy in front of it, so per-client tracking reflects the real caller, not the proxy.
 
 **Explicitly not implemented** (documented gaps, not oversights):
 
-- No rate limiting.
 - No CORS policy configured (no consuming frontend origin defined in current scope).
 - No WAF or secrets-manager integration.
 - Webhook signature verification is not implemented (no real gateway chosen, so no provider-specific signature scheme applies yet).

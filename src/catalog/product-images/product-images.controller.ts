@@ -28,8 +28,10 @@ import {
   ApiPayloadTooLargeResponse,
   ApiSecurity,
   ApiTags,
+  ApiTooManyRequestsResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
@@ -37,6 +39,11 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../../auth/guards/optional-jwt-auth.guard';
 import { ProductOwnershipGuard } from '../../auth/guards/product-ownership.guard';
 import type { SafeUser } from '../../auth/utils/safe-user';
+import {
+  THROTTLE_DEFAULTS,
+  THROTTLE_ENV,
+  throttleLimitFromEnv,
+} from '../../throttler/throttle-config';
 import { CreateProductImageDto } from './dto/create-product-image.dto';
 import { ProductImagesService } from './product-images.service';
 import { MAX_IMAGE_FILE_SIZE_BYTES } from './utils/image-validation';
@@ -77,6 +84,14 @@ export class ProductImagesController {
 
   @Post()
   @UseGuards(JwtAuthGuard, ProductOwnershipGuard)
+  @Throttle({
+    default: {
+      limit: throttleLimitFromEnv(
+        THROTTLE_ENV.productImageUploadLimit,
+        THROTTLE_DEFAULTS.productImageUploadLimit,
+      ),
+    },
+  })
   @ApiBearerAuth()
   @UseInterceptors(
     FileInterceptor('file', {
@@ -130,6 +145,9 @@ export class ProductImagesController {
   })
   @ApiPayloadTooLargeResponse({
     description: 'The file exceeds the size limit.',
+  })
+  @ApiTooManyRequestsResponse({
+    description: 'Too many uploads from this client.',
   })
   create(
     @Param('productId') productId: string,

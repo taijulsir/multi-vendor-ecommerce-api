@@ -16,8 +16,10 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  ApiTooManyRequestsResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 
 import { AuthService } from './auth.service';
 import { CurrentUser } from './decorators/current-user.decorator';
@@ -29,6 +31,11 @@ import { RegisterDto } from './dto/register.dto';
 import { AuthorizationGuard } from './guards/authorization.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import type { SafeUser } from './utils/safe-user';
+import {
+  THROTTLE_DEFAULTS,
+  THROTTLE_ENV,
+  throttleLimitFromEnv,
+} from '../throttler/throttle-config';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -36,15 +43,34 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
+  @Throttle({
+    default: {
+      limit: throttleLimitFromEnv(
+        THROTTLE_ENV.authRegisterLimit,
+        THROTTLE_DEFAULTS.authRegisterLimit,
+      ),
+    },
+  })
   @ApiOperation({ summary: 'Register a new user account' })
   @ApiCreatedResponse({ description: 'User registered successfully' })
   @ApiConflictResponse({ description: 'Email is already registered' })
+  @ApiTooManyRequestsResponse({
+    description: 'Too many registration attempts from this client.',
+  })
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
   }
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
+  @Throttle({
+    default: {
+      limit: throttleLimitFromEnv(
+        THROTTLE_ENV.authLoginLimit,
+        THROTTLE_DEFAULTS.authLoginLimit,
+      ),
+    },
+  })
   @ApiOperation({ summary: 'Authenticate with email and password' })
   @ApiOkResponse({
     description:
@@ -76,12 +102,23 @@ export class AuthController {
   @ApiForbiddenResponse({
     description: 'Account is not permitted to authenticate',
   })
+  @ApiTooManyRequestsResponse({
+    description: 'Too many login attempts from this client.',
+  })
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
   }
 
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
+  @Throttle({
+    default: {
+      limit: throttleLimitFromEnv(
+        THROTTLE_ENV.authRefreshLimit,
+        THROTTLE_DEFAULTS.authRefreshLimit,
+      ),
+    },
+  })
   @ApiOperation({
     summary: 'Rotate a refresh token for a new access token + refresh token',
   })
@@ -105,6 +142,9 @@ export class AuthController {
       'used, or the associated account is no longer permitted to ' +
       'authenticate. The response is intentionally generic and does not ' +
       'indicate which of these applies.',
+  })
+  @ApiTooManyRequestsResponse({
+    description: 'Too many refresh attempts from this client.',
   })
   refresh(@Body() dto: RefreshTokenDto) {
     return this.authService.refresh(dto);

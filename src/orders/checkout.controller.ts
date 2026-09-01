@@ -6,12 +6,19 @@ import {
   ApiCreatedResponse,
   ApiOperation,
   ApiTags,
+  ApiTooManyRequestsResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { SafeUser } from '../auth/utils/safe-user';
+import {
+  THROTTLE_DEFAULTS,
+  THROTTLE_ENV,
+  throttleLimitFromEnv,
+} from '../throttler/throttle-config';
 import { CheckoutDto } from './dto/checkout.dto';
 import { CheckoutService } from './checkout.service';
 
@@ -30,6 +37,14 @@ export class CheckoutController {
   constructor(private readonly checkoutService: CheckoutService) {}
 
   @Post()
+  @Throttle({
+    default: {
+      limit: throttleLimitFromEnv(
+        THROTTLE_ENV.checkoutLimit,
+        THROTTLE_DEFAULTS.checkoutLimit,
+      ),
+    },
+  })
   @ApiOperation({
     summary: "Check out the authenticated user's active cart",
     description:
@@ -50,6 +65,9 @@ export class CheckoutController {
     description:
       'Currency mismatch, insufficient inventory, or the cart was ' +
       'already checked out (including by a concurrent/retried request).',
+  })
+  @ApiTooManyRequestsResponse({
+    description: 'Too many checkout attempts from this client.',
   })
   checkout(@CurrentUser() user: SafeUser, @Body() dto: CheckoutDto) {
     return this.checkoutService.checkout(user.id, dto);

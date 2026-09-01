@@ -46,6 +46,21 @@ jobs:
       JWT_REFRESH_SECRET: ci-refresh-secret-do-not-use-in-production-0000000000000000
       JWT_ACCESS_EXPIRES_IN: 15m
       JWT_REFRESH_EXPIRES_IN: 7d
+      # Rate limiting: generous, CI-only values. The full e2e suite makes
+      # 100+ register/login calls within a single window (every e2e spec
+      # file shares one Redis-backed counter per route, and the whole
+      # suite runs in well under a minute) — this keeps the throttler
+      # guard genuinely active in CI (never disabled) without it tripping
+      # on that legitimate test volume. Production uses much stricter
+      # values (docs/deployment.md), never these.
+      THROTTLE_TTL_MS: 60000
+      THROTTLE_LIMIT: 2000
+      THROTTLE_AUTH_LOGIN_LIMIT: 1000
+      THROTTLE_AUTH_REGISTER_LIMIT: 1000
+      THROTTLE_AUTH_REFRESH_LIMIT: 500
+      THROTTLE_PAYMENTS_WEBHOOK_LIMIT: 500
+      THROTTLE_PRODUCT_IMAGE_UPLOAD_LIMIT: 500
+      THROTTLE_CHECKOUT_LIMIT: 500
 
     steps:
       - uses: actions/checkout@v4

@@ -4,10 +4,17 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  ApiTooManyRequestsResponse,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 
 import { WebhookEventDto } from './dto/webhook-event.dto';
 import { WebhooksService } from './webhooks.service';
+import {
+  THROTTLE_DEFAULTS,
+  THROTTLE_ENV,
+  throttleLimitFromEnv,
+} from '../throttler/throttle-config';
 
 /**
  * Payment webhook foundation (Phase 15). Deliberately **not**
@@ -25,6 +32,14 @@ export class WebhooksController {
 
   @Post()
   @HttpCode(HttpStatus.OK)
+  @Throttle({
+    default: {
+      limit: throttleLimitFromEnv(
+        THROTTLE_ENV.paymentsWebhookLimit,
+        THROTTLE_DEFAULTS.paymentsWebhookLimit,
+      ),
+    },
+  })
   @ApiOperation({
     summary: 'Receive a payment/refund gateway event',
     description:
@@ -34,7 +49,11 @@ export class WebhooksController {
       '— a replayed event is a no-op. Always returns 200 for a ' +
       'well-formed request; the response body reports the outcome ' +
       '(processed / duplicate / ignored / unmatched) without ever ' +
-      'echoing the stored payload back.',
+      'echoing the stored payload back. Rate-limited per client like ' +
+      'every other endpoint (see THROTTLE_PAYMENTS_WEBHOOK_LIMIT) — this ' +
+      'endpoint has no signature verification (no real gateway is ' +
+      'integrated; see WebhooksService), so a coarse per-IP ceiling is ' +
+      'one of the few mitigations available against it being flooded.',
   })
   @ApiOkResponse({
     description: 'The event was received (regardless of processing outcome).',
@@ -43,6 +62,9 @@ export class WebhooksController {
     },
   })
   @ApiBadRequestResponse({ description: 'Invalid payload.' })
+  @ApiTooManyRequestsResponse({
+    description: 'Too many webhook events from this client.',
+  })
   receive(@Body() dto: WebhookEventDto) {
     return this.webhooksService.processEvent(dto);
   }
